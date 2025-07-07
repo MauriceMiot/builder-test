@@ -1,8 +1,11 @@
 @import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  /* --foreground: #171717; */
 }
 
 @theme inline {
@@ -23,4 +26,72 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Estilos globales para inputs y selects */
+@layer components {
+  .form-input {
+    @apply w-full px-3 py-2 border border-black rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-black;
+  }
+
+  .form-select {
+    @apply w-full px-3 py-2 border border-black rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-black;
+  }
+
+  .form-button {
+    @apply px-4 py-2 border border-black rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors;
+  }
+
+  .form-button-primary {
+    @apply bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700;
+  }
+
+  .form-button-secondary {
+    @apply bg-gray-600 text-white border-gray-600 hover:bg-gray-700 hover:border-gray-700;
+  }
+
+  .form-button-danger {
+    @apply bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700;
+  }
+
+  .form-button-success {
+    @apply bg-green-600 text-white border-green-600 hover:bg-green-700 hover:border-green-700;
+  }
+}
+
+/* Estilos específicos para inputs y selects */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+  @apply border-black text-black bg-white;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+select:focus,
+textarea:focus {
+  @apply outline-none ring-2 ring-blue-500 border-blue-500;
+}
+
+/* Estilos para componentes de Konva */
+.konva-container {
+  @apply border border-black rounded-lg;
+}
+
+/* Estilos para paneles y contenedores */
+.panel-container {
+  @apply border border-black rounded-lg bg-white;
+}
+
+.panel-header {
+  @apply border-b border-black bg-gray-50 px-4 py-3 rounded-t-lg;
+}
+
+.panel-content {
+  @apply p-4;
 }
