@@ -46,6 +46,8 @@ export default function Canvas() {
     updateShape,
     removeShape,
     clearSelection,
+    bringToFront,
+    sendToBack,
     snapToGrid,
     snapShapeToGrid,
     startFreehandDrawing,
@@ -57,7 +59,6 @@ export default function Canvas() {
     startPolygonEditing,
     stopPolygonEditing,
     updatePolygonVertex,
-
     removePolygonVertex,
     updatePreviewShape,
   } = usePlanStore();
@@ -101,6 +102,26 @@ export default function Canvas() {
       if (e.key === "Escape" && isEditingPolygon) {
         stopPolygonEditing();
       }
+      // Traer al frente con Ctrl+Shift+Up
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key === "ArrowUp" &&
+        selectedShapeId
+      ) {
+        e.preventDefault();
+        bringToFront(selectedShapeId);
+      }
+      // Enviar atrás con Ctrl+Shift+Down
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key === "ArrowDown" &&
+        selectedShapeId
+      ) {
+        e.preventDefault();
+        sendToBack(selectedShapeId);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -108,6 +129,8 @@ export default function Canvas() {
     selectedShapeId,
     removeShape,
     clearSelection,
+    bringToFront,
+    sendToBack,
     isDrawingPolygon,
     finishPolygonDrawing,
     isEditingPolygon,
@@ -257,7 +280,7 @@ export default function Canvas() {
     } else if (
       isDrawing &&
       currentTool &&
-      !["freehand", "polygon", "regular-polygon"].includes(currentTool)
+      !["freehand", "polygon"].includes(currentTool)
     ) {
       const stage = e.target.getStage();
       const pos = stage?.getPointerPosition();
@@ -807,8 +830,14 @@ export default function Canvas() {
                   if (shapeId) {
                     const shape = shapes.find((s) => s.id === shapeId);
                     if (shape) {
-                      const newWidth = Math.max(shape.width * scaleX, 10);
-                      const newHeight = Math.max(shape.height * scaleY, 10);
+                      let newWidth = Math.max(shape.width * scaleX, 10);
+                      let newHeight = Math.max(shape.height * scaleY, 10);
+
+                      // Aplicar snap to grid si está habilitado
+                      if (gridConfig.snapToGrid && gridConfig.enabled) {
+                        newWidth = snapToGrid(newWidth);
+                        newHeight = snapToGrid(newHeight);
+                      }
 
                       // Solo actualizar dimensiones y rotación, NO la posición
                       updateShape(shapeId, {

@@ -440,14 +440,37 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   snapToGrid: (value) => {
     const { gridConfig } = get();
     if (!gridConfig.snapToGrid) return value;
-    return Math.round(value / gridConfig.size) * gridConfig.size;
+
+    // Calcular el múltiplo más cercano del tamaño de la cuadrícula
+    const gridSize = gridConfig.size;
+    return Math.round(value / gridSize) * gridSize;
   },
 
   snapShapeToGrid: (shape) => {
     const { gridConfig, snapToGrid } = get();
     const snappedShape = { ...shape };
-    snappedShape.x = gridConfig.snapToGrid ? snapToGrid(shape.x) : shape.x;
-    snappedShape.y = gridConfig.snapToGrid ? snapToGrid(shape.y) : shape.y;
+
+    if (gridConfig.snapToGrid) {
+      // Ajustar posición
+      snappedShape.x = snapToGrid(shape.x);
+      snappedShape.y = snapToGrid(shape.y);
+
+      // Ajustar dimensiones para que se alineen con la cuadrícula
+      // Solo ajustar si la diferencia es menor a la mitad del tamaño de la cuadrícula
+      const snappedWidth = snapToGrid(shape.width);
+      const snappedHeight = snapToGrid(shape.height);
+
+      // Asegurar que las dimensiones mínimas se mantengan
+      const minSize = Math.max(10, gridConfig.size);
+
+      if (Math.abs(snappedWidth - shape.width) <= gridConfig.size / 2) {
+        snappedShape.width = Math.max(snappedWidth, minSize);
+      }
+      if (Math.abs(snappedHeight - shape.height) <= gridConfig.size / 2) {
+        snappedShape.height = Math.max(snappedHeight, minSize);
+      }
+    }
+
     return snappedShape;
   },
 

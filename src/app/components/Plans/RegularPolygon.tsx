@@ -43,8 +43,8 @@ const RegularPolygon = forwardRef<Konva.Line, RegularPolygonProps>(
     // Generar puntos del polígono regular
     const generatePoints = () => {
       const points: number[] = [];
-      const centerX = x + width / 2;
-      const centerY = y + height / 2;
+      const centerX = width / 2; // Centro relativo al componente
+      const centerY = height / 2; // Centro relativo al componente
       const angleStep = (2 * Math.PI) / sides;
 
       for (let i = 0; i < sides; i++) {
@@ -60,6 +60,8 @@ const RegularPolygon = forwardRef<Konva.Line, RegularPolygonProps>(
     return (
       <Line
         ref={ref}
+        x={x}
+        y={y}
         points={generatePoints()}
         fill={fill}
         stroke={stroke}

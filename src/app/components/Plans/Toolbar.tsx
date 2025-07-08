@@ -45,7 +45,7 @@ export default function Toolbar() {
         <button
           key={tool.type || "select"}
           onClick={() => setCurrentTool(tool.type)}
-          className={`w-16 h-16 rounded-lg border transition-colors flex flex-col items-center justify-center ${
+          className={`w-12 h-12 rounded-lg border transition-colors flex items-center justify-center relative group ${
             currentTool === tool.type
               ? "bg-blue-600 text-white border-blue-600"
               : "bg-white text-gray-700 border-black hover:bg-gray-50"
@@ -53,38 +53,34 @@ export default function Toolbar() {
           title={tool.label}
         >
           <div className="text-2xl">{tool.icon}</div>
-          <p className="text-[0.625rem] mt-1">{tool.label}</p>
+
+          {/* Tooltip */}
+          <div className="absolute left-full ml-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 pointer-events-none">
+            {tool.label}
+          </div>
         </button>
       ))}
 
       {/* Configuración adicional para polígonos regulares */}
       {currentTool === "regular-polygon" && (
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-black">
-          <div className="text-sm text-gray-600 mb-3">
-            Lados: {regularPolygonSides}
-          </div>
-          <input
-            type="range"
-            min="3"
-            max="12"
+        <div className="mt-2 p-2 bg-gray-50 rounded-lg border border-black">
+          <div className="text-xs text-gray-600 mb-2 text-center">Lados</div>
+          <select
             value={regularPolygonSides}
             onChange={(e) => setRegularPolygonSides(parseInt(e.target.value))}
-            className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-          />
-        </div>
-      )}
-
-      {/* Instrucciones flotantes */}
-      {currentTool && (
-        <div className="absolute left-28 top-4 bg-black text-white text-sm px-4 py-3 rounded whitespace-nowrap z-50">
-          {currentTool === "polygon" &&
-            "Haz clic para agregar vértices. Presiona Enter para cerrar."}
-          {currentTool === "freehand" && "Arrastra para dibujar libremente."}
-          {currentTool === "text" && "Haz clic para agregar texto."}
-          {currentTool === "seat" && "Haz clic para agregar un asiento."}
-          {!["polygon", "freehand", "text", "seat"].includes(currentTool) &&
-            currentTool !== null &&
-            "Arrastra para crear la figura."}
+            className="w-full text-xs p-1 border border-gray-300 rounded bg-white focus:outline-none focus:border-blue-500"
+          >
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+            <option value={5}>5</option>
+            <option value={6}>6</option>
+            <option value={7}>7</option>
+            <option value={8}>8</option>
+            <option value={9}>9</option>
+            <option value={10}>10</option>
+            <option value={11}>11</option>
+            <option value={12}>12</option>
+          </select>
         </div>
       )}
     </div>

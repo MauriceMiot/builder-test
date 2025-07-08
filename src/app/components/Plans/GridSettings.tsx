@@ -19,13 +19,17 @@ export default function GridSettings() {
           </label>
           <button
             onClick={toggleGrid}
-            className={`px-6 py-3 rounded-md text-base font-medium transition-colors ${
-              gridConfig.enabled
-                ? "bg-blue-600 text-white border border-blue-600"
-                : "bg-gray-200 text-gray-700 border border-black hover:bg-gray-300"
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+              gridConfig.enabled ? "bg-blue-600" : "bg-gray-200"
             }`}
+            role="switch"
+            aria-checked={gridConfig.enabled}
           >
-            {gridConfig.enabled ? "Activada" : "Desactivada"}
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                gridConfig.enabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
           </button>
         </div>
 
@@ -84,13 +88,17 @@ export default function GridSettings() {
           </label>
           <button
             onClick={toggleSnapToGrid}
-            className={`px-6 py-3 rounded-md text-base font-medium transition-colors ${
-              gridConfig.snapToGrid
-                ? "bg-green-600 text-white border border-green-600"
-                : "bg-gray-200 text-gray-700 border border-black hover:bg-gray-300"
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+              gridConfig.snapToGrid ? "bg-green-600" : "bg-gray-200"
             }`}
+            role="switch"
+            aria-checked={gridConfig.snapToGrid}
           >
-            {gridConfig.snapToGrid ? "Activado" : "Desactivado"}
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                gridConfig.snapToGrid ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
           </button>
         </div>
       </div>

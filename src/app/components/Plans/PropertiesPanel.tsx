@@ -8,11 +8,9 @@ export default function PropertiesPanel() {
     shapes,
     selectedShapeId,
     updateShape,
-    removeShape,
+    bringToFront,
+    sendToBack,
     // duplicateShape,
-    // bringToFront,
-    // sendToBack,
-    clearSelection,
   } = usePlanStore();
 
   const selectedShape = shapes.find((shape) => shape.id === selectedShapeId);
@@ -29,13 +27,6 @@ export default function PropertiesPanel() {
       </div>
     );
   }
-
-  const handleDelete = () => {
-    if (confirm("¿Estás seguro de que quieres eliminar esta figura?")) {
-      removeShape(selectedShape.id);
-      clearSelection();
-    }
-  };
 
   return (
     <div className="p-8">
@@ -114,88 +105,152 @@ export default function PropertiesPanel() {
 
         {/* Rotación */}
         <div className="space-y-4">
-          <div className="flex w-1/2 items-center gap-2 justify-center space-y-4">
-            <Icon
-              icon="mdi:rotate-right"
-              className="text-2xl text-gray-700 p-0 m-0"
-            />
+          <div className="flex justify-between items-center gap-2">
+            <div className="w-1/2 flex items-center gap-2 justify-center space-y-4">
+              <Icon
+                icon="mdi:rotate-right"
+                className="text-2xl text-gray-700 p-0 m-0"
+              />
 
-            <input
-              type="number"
-              value={selectedShape.rotation}
-              onChange={(e) =>
-                updateShape(selectedShape.id, {
-                  rotation: parseInt(e.target.value),
-                })
-              }
-              className="form-input text-base py-3"
-            />
+              <input
+                type="number"
+                value={selectedShape.rotation}
+                onChange={(e) =>
+                  updateShape(selectedShape.id, {
+                    rotation: parseInt(e.target.value),
+                  })
+                }
+                className="form-input text-base py-3"
+              />
+            </div>
+
+            <div className="flex w-1/2 items-center gap-2 justify-center space-y-4">
+              <Icon
+                icon="bi:border-width"
+                className="text-2xl text-gray-700 p-0 m-0"
+              />
+
+              <input
+                type="number"
+                min="0"
+                max="20"
+                value={selectedShape.strokeWidth}
+                onChange={(e) =>
+                  updateShape(selectedShape.id, {
+                    strokeWidth: parseInt(e.target.value),
+                  })
+                }
+                className="form-input text-base py-3"
+              />
+            </div>
           </div>
         </div>
 
         {/* Color de relleno */}
         <div className="space-y-4">
-          <div className="flex w-1/2 items-center gap-2 justify-center space-y-4">
-            <Icon
-              icon="mdi:palette"
-              className="text-2xl text-gray-700 p-0 m-0"
-            />
+          <div className="flex justify-between items-center gap-2">
+            <div className="flex w-1/2 items-center gap-2 justify-center">
+              <Icon
+                icon="mdi:palette"
+                className="text-2xl text-gray-700 p-0 m-0"
+              />
 
-            <input
-              type="color"
-              value={selectedShape.fill}
-              onChange={(e) =>
-                updateShape(selectedShape.id, { fill: e.target.value })
-              }
-              className="w-full h-16 border border-black rounded-md cursor-pointer"
-            />
+              <input
+                type="color"
+                value={selectedShape.fill}
+                onChange={(e) =>
+                  updateShape(selectedShape.id, { fill: e.target.value })
+                }
+                className="w-full h-8 border border-black rounded-md cursor-pointer"
+              />
+            </div>
+
+            {/* Color de borde */}
+
+            <div className="flex w-1/2 items-center gap-2 justify-center space-y-4">
+              <Icon
+                icon="material-symbols:border-color"
+                className="text-2xl text-gray-700 p-0 m-0"
+              />
+
+              <input
+                type="color"
+                value={selectedShape.stroke}
+                onChange={(e) =>
+                  updateShape(selectedShape.id, { stroke: e.target.value })
+                }
+                className="w-full h-8 border border-black rounded-md cursor-pointer"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Color de borde */}
-        <div className="space-y-4">
-          <div className="flex w-1/2 items-center gap-2 justify-center space-y-4">
-            <Icon
-              icon="ant-design:border-outlined"
-              className="text-2xl p-0 m-0"
-              style={{
-                color: selectedShape.stroke,
-              }}
-            />
-
-            <input
-              type="color"
-              value={selectedShape.stroke}
-              onChange={(e) =>
-                updateShape(selectedShape.id, { stroke: e.target.value })
-              }
-              className="w-1/2 h-8 border border-black rounded-md cursor-pointer"
-            />
-          </div>
-        </div>
-
-        {/* Grosor de borde */}
+        {/* Controles de capa */}
         <div className="space-y-4">
           <label className="block text-base font-medium text-gray-700">
-            Grosor de borde
+            Orden de capa
           </label>
-          <input
-            type="number"
-            min="0"
-            max="20"
-            value={selectedShape.strokeWidth}
-            onChange={(e) =>
-              updateShape(selectedShape.id, {
-                strokeWidth: parseInt(e.target.value),
-              })
-            }
-            className="form-input text-base py-3"
-          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => bringToFront(selectedShape.id)}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              title="Traer al frente"
+            >
+              <Icon icon="mdi:arrow-up" className="text-lg" />
+              <span className="text-sm">Traer al frente</span>
+            </button>
+            <button
+              onClick={() => sendToBack(selectedShape.id)}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              title="Enviar atrás"
+            >
+              <Icon icon="mdi:arrow-down" className="text-lg" />
+              <span className="text-sm">Enviar atrás</span>
+            </button>
+          </div>
         </div>
 
         {/* Propiedades específicas para texto */}
         {selectedShape?.type === "text" && (
           <div className="space-y-4">
+            <div className="flex justify-between items-center gap-2">
+              <div className="flex w-1/2 items-center gap-2 justify-center">
+                <Icon
+                  icon="bx:font-size"
+                  className="text-2xl text-gray-700 p-0 m-0"
+                />
+                <input
+                  type="number"
+                  value={selectedShape.fontSize || 16}
+                  onChange={(e) =>
+                    updateShape(selectedShape.id, {
+                      fontSize: parseInt(e.target.value),
+                    })
+                  }
+                  className="form-input text-base py-3"
+                />
+              </div>
+              <div className="flex w-1/2 items-center gap-2 justify-center">
+                <Icon
+                  icon="ri:font-family"
+                  className="text-2xl text-gray-700 p-0 m-0"
+                />
+                <select
+                  value={selectedShape.fontFamily || "Arial"}
+                  onChange={(e) =>
+                    updateShape(selectedShape.id, {
+                      fontFamily: e.target.value,
+                    })
+                  }
+                  className="form-select text-base py-3"
+                >
+                  <option value="Arial">Arial</option>
+                  <option value="Helvetica">Helvetica</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Courier New">Courier New</option>
+                </select>
+              </div>
+            </div>
             <label className="block text-base font-medium text-gray-700">
               Texto
             </label>
@@ -207,34 +262,6 @@ export default function PropertiesPanel() {
               }
               className="form-input text-base py-3"
             />
-            <label className="block text-base font-medium text-gray-700">
-              Tamaño de fuente
-            </label>
-            <input
-              type="number"
-              value={selectedShape.fontSize || 16}
-              onChange={(e) =>
-                updateShape(selectedShape.id, {
-                  fontSize: parseInt(e.target.value),
-                })
-              }
-              className="form-input text-base py-3"
-            />
-            <label className="block text-base font-medium text-gray-700">
-              Fuente
-            </label>
-            <select
-              value={selectedShape.fontFamily || "Arial"}
-              onChange={(e) =>
-                updateShape(selectedShape.id, { fontFamily: e.target.value })
-              }
-              className="form-select text-base py-3"
-            >
-              <option value="Arial">Arial</option>
-              <option value="Helvetica">Helvetica</option>
-              <option value="Times New Roman">Times New Roman</option>
-              <option value="Courier New">Courier New</option>
-            </select>
           </div>
         )}
 
@@ -297,14 +324,6 @@ export default function PropertiesPanel() {
             />
           </div>
         )}
-
-        {/* Botón eliminar */}
-        <button
-          onClick={handleDelete}
-          className="w-full form-button form-button-danger mt-10 py-4 text-lg"
-        >
-          Eliminar Figura
-        </button>
       </div>
     </div>
   );
