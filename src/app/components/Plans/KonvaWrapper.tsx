@@ -2,17 +2,18 @@
 
 import { Stage } from "react-konva";
 import { ReactNode } from "react";
+import Konva from "konva";
 
 interface KonvaWrapperProps {
   children: ReactNode;
   width?: number;
   height?: number;
-  onMouseDown?: (e: any) => void;
-  onMousemove?: (e: any) => void;
-  onMouseup?: (e: any) => void;
-  onTouchstart?: (e: any) => void;
-  onTouchmove?: (e: any) => void;
-  onTouchend?: (e: any) => void;
+  onMouseDown?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
+  onMousemove?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
+  onMouseup?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
+  onTouchstart?: (e: Konva.KonvaEventObject<TouchEvent>) => void;
+  onTouchmove?: (e: Konva.KonvaEventObject<TouchEvent>) => void;
+  onTouchend?: (e: Konva.KonvaEventObject<TouchEvent>) => void;
 }
 
 export default function KonvaWrapper({
@@ -27,7 +28,7 @@ export default function KonvaWrapper({
   onTouchend,
 }: KonvaWrapperProps) {
   return (
-    <div className="w-full h-full flex items-center justify-center bg-gray-50">
+    <div className="w-full h-full bg-gray-50">
       <Stage
         width={width}
         height={height}

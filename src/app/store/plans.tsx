@@ -213,7 +213,7 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   },
 
   finishFreehandDrawing: () => {
-    const { currentPath, gridConfig } = get();
+    const { currentPath } = get();
     if (currentPath.length >= 4) {
       // Al menos 2 puntos
       // Calcular bounding box
@@ -282,7 +282,7 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   },
 
   finishPolygonDrawing: () => {
-    const { polygonPoints, gridConfig } = get();
+    const { polygonPoints } = get();
     if (polygonPoints.length >= 6) {
       // Al menos 3 puntos (6 coordenadas)
       // Calcular bounding box

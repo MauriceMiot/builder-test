@@ -5,6 +5,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { useImage } from "react-konva-utils";
 import { Transformer } from "react-konva";
 import { useSeatStore } from "@/app/store/seats";
+import Konva from "konva";
 
 // ──────── Tipos y Store ────────
 
@@ -28,12 +29,12 @@ export default function SeatEditor() {
   const [image] = useImage(bgImageUrl);
   const [currentSection, setCurrentSection] = useState("LUNETA");
   const [currentRow, setCurrentRow] = useState("A");
-  const [rowCounter, setRowCounter] = useState<{ [key: string]: number }>({});
-  const stageRef = useRef<any>(null);
-  const transformerRef = useRef<any>(null);
-  const layerRef = useRef<any>(null);
 
-  const handleClick = (e: any) => {
+  const stageRef = useRef<Konva.Stage>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
+  const layerRef = useRef<Konva.Layer>(null);
+
+  const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const clickedShape = e.target;
     const idAttr = clickedShape?.attrs?.id;
 
@@ -49,6 +50,7 @@ export default function SeatEditor() {
 
     // Crear nuevo asiento si se clickea el fondo
     const stage = stageRef.current;
+    if (!stage) return;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
@@ -115,7 +117,7 @@ export default function SeatEditor() {
     const layer = layerRef.current;
     if (!transformer || !layer) return;
 
-    const selectedNodes = layer.find((node: any) =>
+    const selectedNodes = layer.find((node: Konva.Node) =>
       selected.includes(Number(node.id()))
     );
 
@@ -189,7 +191,7 @@ export default function SeatEditor() {
                 x={seat.x}
                 y={seat.y}
                 radius={6}
-                fill={getColorBySection(seat.section)}
+                fill={getColorBySection(seat.section || "LUNETA")}
                 draggable
                 onDragEnd={(e) =>
                   updateSeatPosition(seat.id, e.target.x(), e.target.y())

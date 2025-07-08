@@ -363,19 +363,19 @@ export default function SeatMap() {
   );
 }
 
-// ──────── Helpers ────────
+// // ──────── Helpers ────────
 
-function getColorBySection(section: string) {
-  switch (section?.toUpperCase()) {
-    case "LUNETA":
-      return "#3b82f6"; // azul
-    case "PATIO":
-      return "#10b981"; // verde
-    case "PALCO":
-      return "#f59e0b"; // amarillo
-    case "VIP":
-      return "#ef4444"; // rojo
-    default:
-      return "gray";
-  }
-}
+// function getColorBySection(section: string) {
+//   switch (section?.toUpperCase()) {
+//     case "LUNETA":
+//       return "#3b82f6"; // azul
+//     case "PATIO":
+//       return "#10b981"; // verde
+//     case "PALCO":
+//       return "#f59e0b"; // amarillo
+//     case "VIP":
+//       return "#ef4444"; // rojo
+//     default:
+//       return "gray";
+//   }
+// }

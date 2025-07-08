@@ -10,6 +10,8 @@ import {
   Transformer,
   Ellipse,
 } from "react-konva";
+import Konva from "konva";
+
 import { usePlanStore, PlanShape } from "../../store/plans";
 import Triangle from "./Triangle";
 import Stadium from "./Stadium";
@@ -22,8 +24,9 @@ import KonvaWrapper from "./KonvaWrapper";
 let copiedShape: PlanShape | null = null;
 
 export default function Canvas() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const shapeRef = useRef<any>(null);
-  const transformerRef = useRef<any>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
 
   const {
     shapes,
@@ -54,7 +57,7 @@ export default function Canvas() {
     startPolygonEditing,
     stopPolygonEditing,
     updatePolygonVertex,
-    addPolygonVertex,
+
     removePolygonVertex,
     updatePreviewShape,
   } = usePlanStore();
@@ -62,14 +65,27 @@ export default function Canvas() {
   useEffect(() => {
     if (selectedShapeId && shapeRef.current && transformerRef.current) {
       transformerRef.current.nodes([shapeRef.current]);
-      transformerRef.current.getLayer().batchDraw();
+      transformerRef.current.getLayer()?.batchDraw();
     }
   }, [selectedShapeId, shapes]);
 
   // Eliminar con tecla Suprimir/Delete/Backspace
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedShapeId) {
+      // Verificar si el elemento activo es un input, textarea o contenteditable
+      const activeElement = document.activeElement;
+      const isInputElement =
+        activeElement &&
+        (activeElement.tagName === "INPUT" ||
+          activeElement.tagName === "TEXTAREA" ||
+          (activeElement as HTMLElement).contentEditable === "true");
+
+      // Solo borrar la figura si no estamos en un input y hay una figura seleccionada
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedShapeId &&
+        !isInputElement
+      ) {
         removeShape(selectedShapeId);
         clearSelection();
       }
@@ -113,7 +129,7 @@ export default function Canvas() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
         if (copiedShape) {
           // Crear una copia con nuevo ID y posición desplazada
-          const { id, x, y, selected, ...rest } = copiedShape;
+          const { x, y, ...rest } = copiedShape;
           const newShape = {
             ...rest,
             x: x + 30,
@@ -131,15 +147,14 @@ export default function Canvas() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
 
-  const handleMouseDown = (e: any) => {
+  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
     const clickedOnEmpty = e.target === stage;
 
+    // Si no hay herramienta seleccionada, solo manejar selección
     if (!currentTool) {
-      // Modo selección
       if (clickedOnEmpty) {
         clearSelection();
-        return;
       }
       return;
     }
@@ -170,7 +185,7 @@ export default function Canvas() {
     }
   };
 
-  const handleMouseMove = (e: any) => {
+  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
     const pos = stage?.getPointerPosition();
     if (!pos) return;
@@ -189,7 +204,7 @@ export default function Canvas() {
       const height = Math.abs(pos.y - startPos.y);
 
       if (width > 5 && height > 5) {
-        let previewData: any = {
+        let previewData: Omit<PlanShape, "id"> = {
           type: currentTool,
           x: Math.min(startPos.x, pos.x),
           y: Math.min(startPos.y, pos.y),
@@ -235,15 +250,14 @@ export default function Canvas() {
     }
   };
 
-  const handleMouseUp = (e: any) => {
+  const handleMouseUp = (e: Konva.KonvaEventObject<MouseEvent>) => {
     if (currentTool === "freehand") {
       // Finalizar dibujo libre
       finishFreehandDrawing();
     } else if (
       isDrawing &&
       currentTool &&
-      currentTool !== "freehand" &&
-      currentTool !== "polygon"
+      !["freehand", "polygon", "regular-polygon"].includes(currentTool)
     ) {
       const stage = e.target.getStage();
       const pos = stage?.getPointerPosition();
@@ -253,7 +267,7 @@ export default function Canvas() {
 
         // Solo crear figura si tiene un tamaño mínimo
         if (width > 5 && height > 5) {
-          let newShape: any = {
+          let newShape: Omit<PlanShape, "id"> = {
             type: currentTool,
             x: Math.min(startPos.x, pos.x),
             y: Math.min(startPos.y, pos.y),
@@ -268,7 +282,7 @@ export default function Canvas() {
           };
 
           // Configuración específica para polígonos regulares
-          if (currentTool === "regular-polygon") {
+          if (currentTool === ("regular-polygon" as const)) {
             const radius = Math.min(width, height) / 2;
             const centerX = startPos.x + width / 2;
             const centerY = startPos.y + height / 2;
@@ -298,16 +312,40 @@ export default function Canvas() {
     }
   };
 
+  // Funciones para eventos de touch
+  const handleTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    handleMouseDown(e as unknown as Konva.KonvaEventObject<MouseEvent>);
+  };
+
+  const handleTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    handleMouseMove(e as unknown as Konva.KonvaEventObject<MouseEvent>);
+  };
+
+  const handleTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    handleMouseUp(e as unknown as Konva.KonvaEventObject<MouseEvent>);
+  };
+
   const handleShapeClick = (shapeId: string) => {
     selectShape(shapeId);
   };
 
   const handleShapeDragEnd = (shapeId: string, x: number, y: number) => {
-    const snappedX = snapToGrid(x);
-    const snappedY = snapToGrid(y);
+    // Obtener la configuración actual del grid
+    const { gridConfig } = usePlanStore.getState();
+
+    // Solo aplicar snap to grid si está habilitado y el grid está activo
+    let finalX = x;
+    let finalY = y;
+
+    if (gridConfig.snapToGrid && gridConfig.enabled) {
+      finalX = snapToGrid(x);
+      finalY = snapToGrid(y);
+    }
+
+    // Actualizar la posición de manera suave
     updateShape(shapeId, {
-      x: snappedX,
-      y: snappedY,
+      x: finalX,
+      y: finalY,
     });
   };
 
@@ -358,7 +396,7 @@ export default function Canvas() {
       rotation: shape.rotation,
       onClick: () => handleShapeClick(shape.id),
       onTap: () => handleShapeClick(shape.id),
-      onDragEnd: (e: any) => {
+      onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
         handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
       },
       ref: isSelected ? shapeRef : undefined,
@@ -371,10 +409,23 @@ export default function Canvas() {
         return (
           <Circle
             key={shape.id}
-            {...commonProps}
             radius={Math.min(shape.width, shape.height) / 2}
             x={shape.x + shape.width / 2}
             y={shape.y + shape.height / 2}
+            fill={shape.fill}
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            draggable={true}
+            rotation={shape.rotation}
+            onClick={() => handleShapeClick(shape.id)}
+            onTap={() => handleShapeClick(shape.id)}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+              // Para círculos, necesitamos ajustar la posición ya que usan centro
+              const newX = e.target.x() - shape.width / 2;
+              const newY = e.target.y() - shape.height / 2;
+              handleShapeDragEnd(shape.id, newX, newY);
+            }}
+            ref={isSelected ? shapeRef : undefined}
           />
         );
       case "ellipse":
@@ -392,8 +443,11 @@ export default function Canvas() {
             rotation={shape.rotation}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
-            onDragEnd={(e: any) => {
-              handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+              // Para elipses, necesitamos ajustar la posición ya que usan centro
+              const newX = e.target.x() - shape.width / 2;
+              const newY = e.target.y() - shape.height / 2;
+              handleShapeDragEnd(shape.id, newX, newY);
             }}
             ref={isSelected ? shapeRef : undefined}
           />
@@ -413,7 +467,7 @@ export default function Canvas() {
             rotation={shape.rotation}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
-            onDragEnd={(e: any) => {
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
             }}
             ref={isSelected ? shapeRef : undefined}
@@ -434,7 +488,7 @@ export default function Canvas() {
             rotation={shape.rotation}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
-            onDragEnd={(e: any) => {
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
             }}
             ref={isSelected ? shapeRef : undefined}
@@ -457,7 +511,7 @@ export default function Canvas() {
             radius={shape.radius || Math.min(shape.width, shape.height) / 2}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
-            onDragEnd={(e: any) => {
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
             }}
             ref={isSelected ? shapeRef : undefined}
@@ -477,7 +531,7 @@ export default function Canvas() {
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
             onDblClick={() => handlePolygonDoubleClick(shape.id)}
-            onDragEnd={(e: any) => {
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
             }}
             ref={isSelected ? shapeRef : undefined}
@@ -499,7 +553,7 @@ export default function Canvas() {
             rotation={shape.rotation}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
-            onDragEnd={(e: any) => {
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
             }}
             ref={isSelected ? shapeRef : undefined}
@@ -518,7 +572,7 @@ export default function Canvas() {
             rotation={shape.rotation}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
-            onDragEnd={(e: any) => {
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
             }}
             ref={isSelected ? shapeRef : undefined}
@@ -543,7 +597,7 @@ export default function Canvas() {
             seatPrice={shape.seatPrice}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
-            onDragEnd={(e: any) => {
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
             }}
             ref={isSelected ? shapeRef : undefined}
@@ -599,9 +653,9 @@ export default function Canvas() {
           onMouseDown={handleMouseDown}
           onMousemove={handleMouseMove}
           onMouseup={handleMouseUp}
-          onTouchstart={handleMouseDown}
-          onTouchmove={handleMouseMove}
-          onTouchend={handleMouseUp}
+          onTouchstart={handleTouchStart}
+          onTouchmove={handleTouchMove}
+          onTouchend={handleTouchEnd}
         >
           <Layer>
             {/* Grid de fondo */}
@@ -738,6 +792,33 @@ export default function Canvas() {
                   "bottom-left",
                   "middle-left",
                 ]}
+                onTransformEnd={(e: Konva.KonvaEventObject<Event>) => {
+                  // Manejar el final de la transformación de manera suave
+                  const node = e.target;
+                  const scaleX = node.scaleX();
+                  const scaleY = node.scaleY();
+
+                  // Resetear la escala para evitar problemas
+                  node.scaleX(1);
+                  node.scaleY(1);
+
+                  // Actualizar el shape con las nuevas dimensiones
+                  const shapeId = selectedShapeId;
+                  if (shapeId) {
+                    const shape = shapes.find((s) => s.id === shapeId);
+                    if (shape) {
+                      const newWidth = Math.max(shape.width * scaleX, 10);
+                      const newHeight = Math.max(shape.height * scaleY, 10);
+
+                      // Solo actualizar dimensiones y rotación, NO la posición
+                      updateShape(shapeId, {
+                        width: newWidth,
+                        height: newHeight,
+                        rotation: node.rotation(),
+                      });
+                    }
+                  }
+                }}
               />
             )}
           </Layer>

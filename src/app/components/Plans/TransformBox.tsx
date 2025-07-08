@@ -3,6 +3,7 @@
 import { Group, Rect, Circle } from "react-konva";
 import { useRef } from "react";
 import { PlanShape } from "../../store/plans";
+import Konva from "konva";
 
 interface TransformBoxProps {
   shape: PlanShape;
@@ -62,7 +63,7 @@ export default function TransformBox({
   });
   const rotateStart = useRef({ x: 0, y: 0, rotation: 0 });
 
-  const handleDragStart = (e: any, anchor: string) => {
+  const handleDragStart = (e: Konva.KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
     dragStart.current = {
       x: e.target.x(),
@@ -74,10 +75,13 @@ export default function TransformBox({
     };
   };
 
-  const handleDragMove = (e: any, anchor: string) => {
+  const handleDragMove = (
+    e: Konva.KonvaEventObject<MouseEvent>,
+    anchor: string
+  ) => {
     e.cancelBubble = true;
     const mousePos = { x: e.target.x(), y: e.target.y() };
-    let { width, height, shapeX, shapeY, x, y } = dragStart.current;
+    const { width, height, shapeX, shapeY, x, y } = dragStart.current;
     let newWidth = width;
     let newHeight = height;
     let newX = shapeX;
@@ -126,10 +130,12 @@ export default function TransformBox({
   };
 
   // Rotación precisa respecto al centro del shape
-  const handleRotateStart = (e: any) => {
+  const handleRotateStart = (e: Konva.KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
     const stage = e.target.getStage();
+    if (!stage) return;
     const pointer = stage.getPointerPosition();
+    if (!pointer) return;
     rotateStart.current = {
       x: pointer.x,
       y: pointer.y,
@@ -137,10 +143,12 @@ export default function TransformBox({
     };
   };
 
-  const handleRotateMove = (e: any) => {
+  const handleRotateMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
     const stage = e.target.getStage();
+    if (!stage) return;
     const pointer = stage.getPointerPosition();
+    if (!pointer) return;
     const boxCenter = {
       x: shape.x + shape.width / 2,
       y: shape.y + shape.height / 2,
@@ -152,7 +160,7 @@ export default function TransformBox({
     onRotate(angle);
   };
 
-  const handleDragEnd = (e: any) => {
+  const handleDragEnd = (e: Konva.KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
   };
 
@@ -201,7 +209,7 @@ export default function TransformBox({
           stroke={strokeColor}
           strokeWidth={1}
           draggable
-          onDragStart={(e) => handleDragStart(e, handle.anchor)}
+          onDragStart={handleDragStart}
           onDragMove={(e) => handleDragMove(e, handle.anchor)}
           onDragEnd={handleDragEnd}
           onMouseEnter={(e) => {
