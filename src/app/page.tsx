@@ -69,28 +69,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Visor de Asientos */}
-          <div className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow duration-300">
-            <div className="text-center">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">💺</span>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-3">
-                Visor de Asientos
-              </h2>
-              <p className="text-gray-600 mb-6">
-                Visualiza y selecciona asientos en tiempo real con información
-                detallada de precios, secciones y disponibilidad.
-              </p>
-              <button
-                onClick={() => setCurrentView("seats")}
-                className="w-full bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200"
-              >
-                Ver Asientos
-              </button>
-            </div>
-          </div>
-
           {/* Gestión de Eventos */}
           <div className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow duration-300">
             <div className="text-center">
@@ -109,6 +87,27 @@ export default function Home() {
                 className="w-full bg-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-purple-700 transition-colors duration-200"
               >
                 Gestionar Eventos
+              </button>
+            </div>
+          </div>
+          {/* Visor de Asientos */}
+          <div className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow duration-300">
+            <div className="text-center">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">💺</span>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-3">
+                Visor de Asientos
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Visualiza y selecciona asientos en tiempo real con información
+                detallada de precios, secciones y disponibilidad.
+              </p>
+              <button
+                onClick={() => setCurrentView("seats")}
+                className="w-full bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200"
+              >
+                Ver Asientos
               </button>
             </div>
           </div>
