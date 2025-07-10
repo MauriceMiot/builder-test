@@ -30,9 +30,6 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
     y,
     width,
     height,
-    fill,
-    stroke,
-    strokeWidth,
     draggable,
     rotation,
     seatNumber,
@@ -45,6 +42,12 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
 
   // Determinar color basado en el estado del asiento
   const getStatusColor = () => {
+    // Si está seleccionado, mostrar amarillo
+    if (isSelected) {
+      return "#F59E0B"; // Amarillo
+    }
+
+    // Si no está seleccionado, usar el estado del asiento
     switch (seatStatus) {
       case "sold":
         return "#EF4444"; // Rojo
@@ -52,13 +55,13 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
         return "#F59E0B"; // Amarillo
       case "available":
       default:
-        return fill;
+        return "#10B981"; // Verde claro
     }
   };
 
   // Path del SVG de asiento (escalado y centrado)
   const seatPath =
-    "M5.5 21c.83 0 1.5-.67 1.5-1.5V18h10v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V17c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v2.5c0 .83.67 1.5 1.5 1.5M20 10h1c.55 0 1 .45 1 1v1c0 .55-.45 1-1 1h-1c-.55 0-1-.45-1-1v-1c0-.55.45-1 1-1M3 10h1c.55 0 1 .45 1 1v1c0 .55-.45 1-1 1H3c-.55 0-1-.45-1-1v-1c0-.55.45-1 1-1m14 3H7V5c0-1.1.9-2 2-2h6c1.1 0 2 .9 2 2z";
+    "M5 9.15V7c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v2.16c-1.16.41-2 1.51-2 2.81V14H7v-2.04c0-1.29-.84-2.4-2-2.81M20 10c-1.1 0-2 .9-2 2v3H6v-3a2 2 0 1 0-4 0v5c0 1.1.9 2 2 2v2h2v-2h12v2h2v-2c1.1 0 2-.9 2-2v-5c0-1.1-.9-2-2-2";
 
   // Escalar el path para que quepa en el tamaño especificado
   const scale = Math.min(width / 24, height / 24);
@@ -68,9 +71,6 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
   // Centrar el asiento
   const centerX = width / 2 - scaledWidth / 2;
   const centerY = height / 2 - scaledHeight / 2;
-
-  const selectionStrokeColor = isSelected ? "#EF4444" : stroke;
-  const selectionStrokeWidth = isSelected ? 2 : strokeWidth;
 
   return (
     <Group
@@ -89,8 +89,8 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
         y={centerY}
         data={seatPath}
         fill={getStatusColor()}
-        stroke={selectionStrokeColor}
-        strokeWidth={selectionStrokeWidth}
+        stroke="transparent"
+        strokeWidth={0}
         scaleX={scale}
         scaleY={scale}
       />
@@ -107,20 +107,6 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
           align="center"
           verticalAlign="middle"
           fontStyle="bold"
-        />
-      )}
-
-      {/* Indicador de selección (anillo exterior) */}
-      {isSelected && (
-        <Path
-          x={centerX}
-          y={centerY}
-          data={seatPath}
-          fill="transparent"
-          stroke="#EF4444"
-          strokeWidth={3}
-          scaleX={scale * 1.1}
-          scaleY={scale * 1.1}
         />
       )}
     </Group>

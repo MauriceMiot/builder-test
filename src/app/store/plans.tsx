@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type ShapeType =
   | "rectangle"
@@ -123,6 +124,13 @@ interface PlanStore {
   exportToJSON: () => string;
   importFromJSON: (json: string) => void;
 
+  // Guardar plano
+  savePlan: (planData: {
+    title: string;
+    shapes: PlanShape[];
+    gridConfig: GridConfig;
+  }) => void;
+
   // Utilidades
   duplicateShape: (id: string) => void;
   bringToFront: (id: string) => void;
@@ -133,449 +141,493 @@ interface PlanStore {
   snapShapeToGrid: (shape: Omit<PlanShape, "id">) => Omit<PlanShape, "id">;
 }
 
-export const usePlanStore = create<PlanStore>((set, get) => ({
-  shapes: [],
-  selectedShapeId: null,
-  isDrawing: false,
-  currentTool: null,
-  gridConfig: {
-    enabled: true,
-    size: 40,
-    color: "#E5E7EB",
-    opacity: 0.5,
-    snapToGrid: false,
-  },
-  currentPath: [],
-  isDrawingFreehand: false,
-  isDrawingPolygon: false,
-  polygonPoints: [],
-  isEditingPolygon: false,
-  editingPolygonId: null,
-  previewShape: null,
-  regularPolygonSides: 5,
-
-  addShape: (shapeData) => {
-    const newShape: PlanShape = {
-      id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      ...shapeData,
-    };
-    set((state) => ({
-      shapes: [...state.shapes, newShape],
-      selectedShapeId: newShape.id,
-    }));
-  },
-
-  removeShape: (id) => {
-    set((state) => ({
-      shapes: state.shapes.filter((shape) => shape.id !== id),
-      selectedShapeId:
-        state.selectedShapeId === id ? null : state.selectedShapeId,
-    }));
-  },
-
-  updateShape: (id, updates) => {
-    set((state) => ({
-      shapes: state.shapes.map((shape) =>
-        shape.id === id ? { ...shape, ...updates } : shape
-      ),
-    }));
-  },
-
-  selectShape: (id) => {
-    set({ selectedShapeId: id });
-  },
-
-  setCurrentTool: (tool) => {
-    set({ currentTool: tool });
-  },
-
-  setIsDrawing: (drawing) => {
-    set({ isDrawing: drawing });
-  },
-
-  startFreehandDrawing: (x, y) => {
-    const { snapToGrid } = get();
-    const snappedX = snapToGrid(x);
-    const snappedY = snapToGrid(y);
-    set({
-      currentPath: [snappedX, snappedY],
-      isDrawingFreehand: true,
-    });
-  },
-
-  addPointToFreehand: (x, y) => {
-    const { currentPath, snapToGrid } = get();
-    const snappedX = snapToGrid(x);
-    const snappedY = snapToGrid(y);
-    set({
-      currentPath: [...currentPath, snappedX, snappedY],
-    });
-  },
-
-  finishFreehandDrawing: () => {
-    const { currentPath } = get();
-    if (currentPath.length >= 4) {
-      // Al menos 2 puntos
-      // Calcular bounding box
-      const xCoords = currentPath.filter((_, i) => i % 2 === 0);
-      const yCoords = currentPath.filter((_, i) => i % 2 === 1);
-      const minX = Math.min(...xCoords);
-      const maxX = Math.max(...xCoords);
-      const minY = Math.min(...yCoords);
-      const maxY = Math.max(...yCoords);
-
-      const newShape: PlanShape = {
-        id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        type: "freehand",
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-        fill: "#3B82F6",
-        stroke: "#1E40AF",
-        strokeWidth: 2,
-        rotation: 0,
-        draggable: true,
-        selected: false,
-        points: currentPath,
-        closed: true,
-      };
-
-      set((state) => ({
-        shapes: [...state.shapes, newShape],
-        selectedShapeId: newShape.id,
-        currentPath: [],
-        isDrawingFreehand: false,
-      }));
-    } else {
-      set({
-        currentPath: [],
-        isDrawingFreehand: false,
-      });
-    }
-  },
-
-  clearCurrentPath: () => {
-    set({
+export const usePlanStore = create<PlanStore>()(
+  persist(
+    (set, get) => ({
+      shapes: [],
+      selectedShapeId: null,
+      isDrawing: false,
+      currentTool: null,
+      gridConfig: {
+        enabled: true,
+        size: 40,
+        color: "#E5E7EB",
+        opacity: 0.5,
+        snapToGrid: false,
+      },
       currentPath: [],
       isDrawingFreehand: false,
-    });
-  },
-
-  startPolygonDrawing: (x, y) => {
-    const { snapToGrid } = get();
-    const snappedX = snapToGrid(x);
-    const snappedY = snapToGrid(y);
-    set({
-      polygonPoints: [snappedX, snappedY],
-      isDrawingPolygon: true,
-    });
-  },
-
-  addPolygonPoint: (x, y) => {
-    const { polygonPoints, snapToGrid } = get();
-    const snappedX = snapToGrid(x);
-    const snappedY = snapToGrid(y);
-    set({
-      polygonPoints: [...polygonPoints, snappedX, snappedY],
-    });
-  },
-
-  finishPolygonDrawing: () => {
-    const { polygonPoints } = get();
-    if (polygonPoints.length >= 6) {
-      // Al menos 3 puntos (6 coordenadas)
-      // Calcular bounding box
-      const xCoords = polygonPoints.filter((_, i) => i % 2 === 0);
-      const yCoords = polygonPoints.filter((_, i) => i % 2 === 1);
-      const minX = Math.min(...xCoords);
-      const maxX = Math.max(...xCoords);
-      const minY = Math.min(...yCoords);
-      const maxY = Math.max(...yCoords);
-
-      // Cerrar el polígono conectando el último punto con el primero
-      const closedPoints = [...polygonPoints];
-      if (closedPoints.length >= 4) {
-        closedPoints.push(closedPoints[0], closedPoints[1]);
-      }
-
-      const newShape: PlanShape = {
-        id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        type: "polygon",
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-        fill: "#3B82F6",
-        stroke: "#1E40AF",
-        strokeWidth: 2,
-        rotation: 0,
-        draggable: true,
-        selected: false,
-        points: closedPoints,
-        closed: true,
-      };
-
-      set((state) => ({
-        shapes: [...state.shapes, newShape],
-        selectedShapeId: newShape.id,
-        polygonPoints: [],
-        isDrawingPolygon: false,
-      }));
-    } else {
-      set({
-        polygonPoints: [],
-        isDrawingPolygon: false,
-      });
-    }
-  },
-
-  clearPolygonPoints: () => {
-    set({
-      polygonPoints: [],
       isDrawingPolygon: false,
-    });
-  },
+      polygonPoints: [],
+      isEditingPolygon: false,
+      editingPolygonId: null,
+      previewShape: null,
+      regularPolygonSides: 5,
 
-  setRegularPolygonSides: (sides) => {
-    set({ regularPolygonSides: sides });
-  },
-
-  updatePreviewShape: (shape) => {
-    set({ previewShape: shape });
-  },
-
-  updateGridConfig: (config) => {
-    set((state) => ({
-      gridConfig: { ...state.gridConfig, ...config },
-    }));
-  },
-
-  toggleGrid: () => {
-    set((state) => ({
-      gridConfig: { ...state.gridConfig, enabled: !state.gridConfig.enabled },
-    }));
-  },
-
-  toggleSnapToGrid: () => {
-    set((state) => ({
-      gridConfig: {
-        ...state.gridConfig,
-        snapToGrid: !state.gridConfig.snapToGrid,
+      addShape: (shapeData) => {
+        // Si es un asiento, asegurar seatStatus: 'available' por defecto
+        const isSeat = shapeData.type === "seat";
+        const newShape: PlanShape = {
+          id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          ...shapeData,
+          ...(isSeat && { seatStatus: shapeData.seatStatus || "available" }),
+        };
+        set((state) => ({
+          shapes: [...state.shapes, newShape],
+          selectedShapeId: newShape.id,
+        }));
       },
-    }));
-  },
 
-  clearSelection: () => {
-    set({ selectedShapeId: null });
-  },
+      removeShape: (id) => {
+        set((state) => ({
+          shapes: state.shapes.filter((shape) => shape.id !== id),
+          selectedShapeId:
+            state.selectedShapeId === id ? null : state.selectedShapeId,
+        }));
+      },
 
-  selectMultiple: (ids) => {
-    // Por ahora solo seleccionamos el primero, pero podríamos expandir esto
-    set({ selectedShapeId: ids[0] || null });
-  },
+      updateShape: (id, updates) => {
+        set((state) => ({
+          shapes: state.shapes.map((shape) =>
+            shape.id === id ? { ...shape, ...updates } : shape
+          ),
+        }));
+      },
 
-  exportToJSON: () => {
-    const { shapes, gridConfig } = get();
-    return JSON.stringify({ shapes, gridConfig }, null, 2);
-  },
+      selectShape: (id) => {
+        set({ selectedShapeId: id });
+      },
 
-  importFromJSON: (json) => {
-    try {
-      const data = JSON.parse(json);
-      set({
-        shapes: data.shapes || [],
-        gridConfig: data.gridConfig || get().gridConfig,
-        selectedShapeId: null,
-      });
-    } catch (error) {
-      console.error("Error importing JSON:", error);
-    }
-  },
+      setCurrentTool: (tool) => {
+        set({ currentTool: tool });
+      },
 
-  duplicateShape: (id) => {
-    const { shapes } = get();
-    const shapeToDuplicate = shapes.find((shape) => shape.id === id);
-    if (shapeToDuplicate) {
-      const duplicatedShape: PlanShape = {
-        ...shapeToDuplicate,
-        id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x: shapeToDuplicate.x + 20,
-        y: shapeToDuplicate.y + 20,
-        selected: false,
-      };
-      set((state) => ({
-        shapes: [...state.shapes, duplicatedShape],
-        selectedShapeId: duplicatedShape.id,
-      }));
-    }
-  },
+      setIsDrawing: (drawing) => {
+        set({ isDrawing: drawing });
+      },
 
-  bringToFront: (id) => {
-    set((state) => {
-      const shapeIndex = state.shapes.findIndex((shape) => shape.id === id);
-      if (shapeIndex === -1) return state;
+      startFreehandDrawing: (x, y) => {
+        const { snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+        set({
+          currentPath: [snappedX, snappedY],
+          isDrawingFreehand: true,
+        });
+      },
 
-      const newShapes = [...state.shapes];
-      const [shape] = newShapes.splice(shapeIndex, 1);
-      newShapes.push(shape);
+      addPointToFreehand: (x, y) => {
+        const { currentPath, snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+        set({
+          currentPath: [...currentPath, snappedX, snappedY],
+        });
+      },
 
-      return { shapes: newShapes };
-    });
-  },
-
-  sendToBack: (id) => {
-    set((state) => {
-      const shapeIndex = state.shapes.findIndex((shape) => shape.id === id);
-      if (shapeIndex === -1) return state;
-
-      const newShapes = [...state.shapes];
-      const [shape] = newShapes.splice(shapeIndex, 1);
-      newShapes.unshift(shape);
-
-      return { shapes: newShapes };
-    });
-  },
-
-  snapToGrid: (value) => {
-    const { gridConfig } = get();
-    if (!gridConfig.snapToGrid) return value;
-
-    // Calcular el múltiplo más cercano del tamaño de la cuadrícula
-    const gridSize = gridConfig.size;
-    return Math.round(value / gridSize) * gridSize;
-  },
-
-  snapShapeToGrid: (shape) => {
-    const { gridConfig, snapToGrid } = get();
-    const snappedShape = { ...shape };
-
-    if (gridConfig.snapToGrid) {
-      // Ajustar posición
-      snappedShape.x = snapToGrid(shape.x);
-      snappedShape.y = snapToGrid(shape.y);
-
-      // Ajustar dimensiones para que se alineen con la cuadrícula
-      // Solo ajustar si la diferencia es menor a la mitad del tamaño de la cuadrícula
-      const snappedWidth = snapToGrid(shape.width);
-      const snappedHeight = snapToGrid(shape.height);
-
-      // Asegurar que las dimensiones mínimas se mantengan
-      const minSize = Math.max(10, gridConfig.size);
-
-      if (Math.abs(snappedWidth - shape.width) <= gridConfig.size / 2) {
-        snappedShape.width = Math.max(snappedWidth, minSize);
-      }
-      if (Math.abs(snappedHeight - shape.height) <= gridConfig.size / 2) {
-        snappedShape.height = Math.max(snappedHeight, minSize);
-      }
-    }
-
-    return snappedShape;
-  },
-
-  startPolygonEditing: (polygonId) => {
-    set({ isEditingPolygon: true, editingPolygonId: polygonId });
-  },
-
-  stopPolygonEditing: () => {
-    set({ isEditingPolygon: false, editingPolygonId: null });
-  },
-
-  updatePolygonVertex: (polygonId, vertexIndex, x, y) => {
-    const { snapToGrid } = get();
-    const snappedX = snapToGrid(x);
-    const snappedY = snapToGrid(y);
-
-    set((state) => ({
-      shapes: state.shapes.map((shape) => {
-        if (shape.id === polygonId && shape.points) {
-          const newPoints = [...shape.points];
-          newPoints[vertexIndex * 2] = snappedX;
-          newPoints[vertexIndex * 2 + 1] = snappedY;
-
-          // Recalcular bounding box
-          const xCoords = newPoints.filter((_, i) => i % 2 === 0);
-          const yCoords = newPoints.filter((_, i) => i % 2 === 1);
+      finishFreehandDrawing: () => {
+        const { currentPath } = get();
+        if (currentPath.length >= 4) {
+          // Al menos 2 puntos
+          // Calcular bounding box
+          const xCoords = currentPath.filter((_, i) => i % 2 === 0);
+          const yCoords = currentPath.filter((_, i) => i % 2 === 1);
           const minX = Math.min(...xCoords);
           const maxX = Math.max(...xCoords);
           const minY = Math.min(...yCoords);
           const maxY = Math.max(...yCoords);
 
-          return {
-            ...shape,
-            points: newPoints,
+          const newShape: PlanShape = {
+            id: `shape_${Date.now()}_${Math.random()
+              .toString(36)
+              .substr(2, 9)}`,
+            type: "freehand",
             x: minX,
             y: minY,
             width: maxX - minX,
             height: maxY - minY,
+            fill: "#3B82F6",
+            stroke: "#1E40AF",
+            strokeWidth: 2,
+            rotation: 0,
+            draggable: true,
+            selected: false,
+            points: currentPath,
+            closed: true,
           };
+
+          set((state) => ({
+            shapes: [...state.shapes, newShape],
+            selectedShapeId: newShape.id,
+            currentPath: [],
+            isDrawingFreehand: false,
+          }));
+        } else {
+          set({
+            currentPath: [],
+            isDrawingFreehand: false,
+          });
         }
-        return shape;
-      }),
-    }));
-  },
+      },
 
-  addPolygonVertex: (polygonId, x, y) => {
-    const { snapToGrid } = get();
-    const snappedX = snapToGrid(x);
-    const snappedY = snapToGrid(y);
+      clearCurrentPath: () => {
+        set({
+          currentPath: [],
+          isDrawingFreehand: false,
+        });
+      },
 
-    set((state) => ({
-      shapes: state.shapes.map((shape) => {
-        if (shape.id === polygonId && shape.points) {
-          const newPoints = [...shape.points, snappedX, snappedY];
+      startPolygonDrawing: (x, y) => {
+        const { snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+        set({
+          polygonPoints: [snappedX, snappedY],
+          isDrawingPolygon: true,
+        });
+      },
 
-          // Recalcular bounding box
-          const xCoords = newPoints.filter((_, i) => i % 2 === 0);
-          const yCoords = newPoints.filter((_, i) => i % 2 === 1);
+      addPolygonPoint: (x, y) => {
+        const { polygonPoints, snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+        set({
+          polygonPoints: [...polygonPoints, snappedX, snappedY],
+        });
+      },
+
+      finishPolygonDrawing: () => {
+        const { polygonPoints } = get();
+        if (polygonPoints.length >= 6) {
+          // Al menos 3 puntos (6 coordenadas)
+          // Calcular bounding box
+          const xCoords = polygonPoints.filter((_, i) => i % 2 === 0);
+          const yCoords = polygonPoints.filter((_, i) => i % 2 === 1);
           const minX = Math.min(...xCoords);
           const maxX = Math.max(...xCoords);
           const minY = Math.min(...yCoords);
           const maxY = Math.max(...yCoords);
 
-          return {
-            ...shape,
-            points: newPoints,
+          // Cerrar el polígono conectando el último punto con el primero
+          const closedPoints = [...polygonPoints];
+          if (closedPoints.length >= 4) {
+            closedPoints.push(closedPoints[0], closedPoints[1]);
+          }
+
+          const newShape: PlanShape = {
+            id: `shape_${Date.now()}_${Math.random()
+              .toString(36)
+              .substr(2, 9)}`,
+            type: "polygon",
             x: minX,
             y: minY,
             width: maxX - minX,
             height: maxY - minY,
+            fill: "#3B82F6",
+            stroke: "#1E40AF",
+            strokeWidth: 2,
+            rotation: 0,
+            draggable: true,
+            selected: false,
+            points: closedPoints,
+            closed: true,
           };
+
+          set((state) => ({
+            shapes: [...state.shapes, newShape],
+            selectedShapeId: newShape.id,
+            polygonPoints: [],
+            isDrawingPolygon: false,
+          }));
+        } else {
+          set({
+            polygonPoints: [],
+            isDrawingPolygon: false,
+          });
         }
-        return shape;
-      }),
-    }));
-  },
+      },
 
-  removePolygonVertex: (polygonId, vertexIndex) => {
-    set((state) => ({
-      shapes: state.shapes.map((shape) => {
-        if (shape.id === polygonId && shape.points && shape.points.length > 6) {
-          const newPoints = shape.points.filter(
-            (_, index) =>
-              index !== vertexIndex * 2 && index !== vertexIndex * 2 + 1
-          );
+      clearPolygonPoints: () => {
+        set({
+          polygonPoints: [],
+          isDrawingPolygon: false,
+        });
+      },
 
-          // Recalcular bounding box
-          const xCoords = newPoints.filter((_, i) => i % 2 === 0);
-          const yCoords = newPoints.filter((_, i) => i % 2 === 1);
-          const minX = Math.min(...xCoords);
-          const maxX = Math.max(...xCoords);
-          const minY = Math.min(...yCoords);
-          const maxY = Math.max(...yCoords);
+      setRegularPolygonSides: (sides) => {
+        set({ regularPolygonSides: sides });
+      },
 
-          return {
-            ...shape,
-            points: newPoints,
-            x: minX,
-            y: minY,
-            width: maxX - minX,
-            height: maxY - minY,
+      updatePreviewShape: (shape) => {
+        set({ previewShape: shape });
+      },
+
+      updateGridConfig: (config) => {
+        set((state) => ({
+          gridConfig: { ...state.gridConfig, ...config },
+        }));
+      },
+
+      toggleGrid: () => {
+        set((state) => ({
+          gridConfig: {
+            ...state.gridConfig,
+            enabled: !state.gridConfig.enabled,
+          },
+        }));
+      },
+
+      toggleSnapToGrid: () => {
+        set((state) => ({
+          gridConfig: {
+            ...state.gridConfig,
+            snapToGrid: !state.gridConfig.snapToGrid,
+          },
+        }));
+      },
+
+      clearSelection: () => {
+        set({ selectedShapeId: null });
+      },
+
+      selectMultiple: (ids) => {
+        // Por ahora solo seleccionamos el primero, pero podríamos expandir esto
+        set({ selectedShapeId: ids[0] || null });
+      },
+
+      exportToJSON: () => {
+        const { shapes, gridConfig } = get();
+        return JSON.stringify({ shapes, gridConfig }, null, 2);
+      },
+
+      importFromJSON: (json) => {
+        try {
+          const data = JSON.parse(json);
+          set({
+            shapes: data.shapes || [],
+            gridConfig: data.gridConfig || get().gridConfig,
+            selectedShapeId: null,
+          });
+        } catch (error) {
+          console.error("Error importing JSON:", error);
+        }
+      },
+
+      savePlan: (planData) => {
+        // Guardar el plano en localStorage por ahora
+        const savedPlans = JSON.parse(
+          localStorage.getItem("savedPlans") || "[]"
+        );
+        const newPlan = {
+          id: `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          title: planData.title,
+          shapes: planData.shapes,
+          gridConfig: planData.gridConfig,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        savedPlans.push(newPlan);
+        localStorage.setItem("savedPlans", JSON.stringify(savedPlans));
+      },
+
+      duplicateShape: (id) => {
+        const { shapes } = get();
+        const shapeToDuplicate = shapes.find((shape) => shape.id === id);
+        if (shapeToDuplicate) {
+          const duplicatedShape: PlanShape = {
+            ...shapeToDuplicate,
+            id: `shape_${Date.now()}_${Math.random()
+              .toString(36)
+              .substr(2, 9)}`,
+            x: shapeToDuplicate.x + 20,
+            y: shapeToDuplicate.y + 20,
+            selected: false,
           };
+          set((state) => ({
+            shapes: [...state.shapes, duplicatedShape],
+            selectedShapeId: duplicatedShape.id,
+          }));
         }
-        return shape;
+      },
+
+      bringToFront: (id) => {
+        set((state) => {
+          const shapeIndex = state.shapes.findIndex((shape) => shape.id === id);
+          if (shapeIndex === -1) return state;
+
+          const newShapes = [...state.shapes];
+          const [shape] = newShapes.splice(shapeIndex, 1);
+          newShapes.push(shape);
+
+          return { shapes: newShapes };
+        });
+      },
+
+      sendToBack: (id) => {
+        set((state) => {
+          const shapeIndex = state.shapes.findIndex((shape) => shape.id === id);
+          if (shapeIndex === -1) return state;
+
+          const newShapes = [...state.shapes];
+          const [shape] = newShapes.splice(shapeIndex, 1);
+          newShapes.unshift(shape);
+
+          return { shapes: newShapes };
+        });
+      },
+
+      snapToGrid: (value) => {
+        const { gridConfig } = get();
+        if (!gridConfig.snapToGrid) return value;
+
+        // Calcular el múltiplo más cercano del tamaño de la cuadrícula
+        const gridSize = gridConfig.size;
+        return Math.round(value / gridSize) * gridSize;
+      },
+
+      snapShapeToGrid: (shape) => {
+        const { gridConfig, snapToGrid } = get();
+        const snappedShape = { ...shape };
+
+        if (gridConfig.snapToGrid) {
+          // Ajustar posición
+          snappedShape.x = snapToGrid(shape.x);
+          snappedShape.y = snapToGrid(shape.y);
+
+          // Ajustar dimensiones para que se alineen con la cuadrícula
+          // Solo ajustar si la diferencia es menor a la mitad del tamaño de la cuadrícula
+          const snappedWidth = snapToGrid(shape.width);
+          const snappedHeight = snapToGrid(shape.height);
+
+          // Asegurar que las dimensiones mínimas se mantengan
+          const minSize = Math.max(10, gridConfig.size);
+
+          if (Math.abs(snappedWidth - shape.width) <= gridConfig.size / 2) {
+            snappedShape.width = Math.max(snappedWidth, minSize);
+          }
+          if (Math.abs(snappedHeight - shape.height) <= gridConfig.size / 2) {
+            snappedShape.height = Math.max(snappedHeight, minSize);
+          }
+        }
+
+        return snappedShape;
+      },
+
+      startPolygonEditing: (polygonId) => {
+        set({ isEditingPolygon: true, editingPolygonId: polygonId });
+      },
+
+      stopPolygonEditing: () => {
+        set({ isEditingPolygon: false, editingPolygonId: null });
+      },
+
+      updatePolygonVertex: (polygonId, vertexIndex, x, y) => {
+        const { snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+
+        set((state) => ({
+          shapes: state.shapes.map((shape) => {
+            if (shape.id === polygonId && shape.points) {
+              const newPoints = [...shape.points];
+              newPoints[vertexIndex * 2] = snappedX;
+              newPoints[vertexIndex * 2 + 1] = snappedY;
+
+              // Recalcular bounding box
+              const xCoords = newPoints.filter((_, i) => i % 2 === 0);
+              const yCoords = newPoints.filter((_, i) => i % 2 === 1);
+              const minX = Math.min(...xCoords);
+              const maxX = Math.max(...xCoords);
+              const minY = Math.min(...yCoords);
+              const maxY = Math.max(...yCoords);
+
+              return {
+                ...shape,
+                points: newPoints,
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+              };
+            }
+            return shape;
+          }),
+        }));
+      },
+
+      addPolygonVertex: (polygonId, x, y) => {
+        const { snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+
+        set((state) => ({
+          shapes: state.shapes.map((shape) => {
+            if (shape.id === polygonId && shape.points) {
+              const newPoints = [...shape.points, snappedX, snappedY];
+
+              // Recalcular bounding box
+              const xCoords = newPoints.filter((_, i) => i % 2 === 0);
+              const yCoords = newPoints.filter((_, i) => i % 2 === 1);
+              const minX = Math.min(...xCoords);
+              const maxX = Math.max(...xCoords);
+              const minY = Math.min(...yCoords);
+              const maxY = Math.max(...yCoords);
+
+              return {
+                ...shape,
+                points: newPoints,
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+              };
+            }
+            return shape;
+          }),
+        }));
+      },
+
+      removePolygonVertex: (polygonId, vertexIndex) => {
+        set((state) => ({
+          shapes: state.shapes.map((shape) => {
+            if (
+              shape.id === polygonId &&
+              shape.points &&
+              shape.points.length > 6
+            ) {
+              const newPoints = shape.points.filter(
+                (_, index) =>
+                  index !== vertexIndex * 2 && index !== vertexIndex * 2 + 1
+              );
+
+              // Recalcular bounding box
+              const xCoords = newPoints.filter((_, i) => i % 2 === 0);
+              const yCoords = newPoints.filter((_, i) => i % 2 === 1);
+              const minX = Math.min(...xCoords);
+              const maxX = Math.max(...xCoords);
+              const minY = Math.min(...yCoords);
+              const maxY = Math.max(...yCoords);
+
+              return {
+                ...shape,
+                points: newPoints,
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+              };
+            }
+            return shape;
+          }),
+        }));
+      },
+    }),
+    {
+      name: "plan-store",
+      partialize: (state) => ({
+        shapes: state.shapes,
+        gridConfig: state.gridConfig,
       }),
-    }));
-  },
-}));
+    }
+  )
+);

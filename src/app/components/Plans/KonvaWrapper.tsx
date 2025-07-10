@@ -8,6 +8,8 @@ interface KonvaWrapperProps {
   children: ReactNode;
   width?: number;
   height?: number;
+  scaleX?: number;
+  scaleY?: number;
   onMouseDown?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   onMousemove?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   onMouseup?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
@@ -20,6 +22,8 @@ export default function KonvaWrapper({
   children,
   width = 800,
   height = 600,
+  scaleX = 1,
+  scaleY = 1,
   onMouseDown,
   onMousemove,
   onMouseup,
@@ -32,6 +36,8 @@ export default function KonvaWrapper({
       <Stage
         width={width}
         height={height}
+        scaleX={scaleX}
+        scaleY={scaleY}
         onMouseDown={onMouseDown}
         onMousemove={onMousemove}
         onMouseup={onMouseup}

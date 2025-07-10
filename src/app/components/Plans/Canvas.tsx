@@ -11,6 +11,7 @@ import {
   Ellipse,
 } from "react-konva";
 import Konva from "konva";
+import { Icon } from "@iconify/react";
 
 import { usePlanStore, PlanShape } from "../../store/plans";
 import Triangle from "./Triangle";
@@ -27,6 +28,7 @@ export default function Canvas() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const shapeRef = useRef<any>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
+  const [zoom, setZoom] = useState(1);
 
   const {
     shapes,
@@ -62,6 +64,19 @@ export default function Canvas() {
     removePolygonVertex,
     updatePreviewShape,
   } = usePlanStore();
+
+  // Funciones de zoom
+  const handleZoomIn = () => {
+    setZoom((prev) => Math.min(prev * 1.2, 3)); // Máximo 3x zoom
+  };
+
+  const handleZoomOut = () => {
+    setZoom((prev) => Math.max(prev / 1.2, 0.3)); // Mínimo 0.3x zoom
+  };
+
+  const handleResetZoom = () => {
+    setZoom(1);
+  };
 
   useEffect(() => {
     if (selectedShapeId && shapeRef.current && transformerRef.current) {
@@ -152,7 +167,8 @@ export default function Canvas() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
         if (copiedShape) {
           // Crear una copia con nuevo ID y posición desplazada
-          const { x, y, ...rest } = copiedShape;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { x, y, id, ...rest } = copiedShape;
           const newShape = {
             ...rest,
             x: x + 30,
@@ -669,10 +685,12 @@ export default function Canvas() {
 
   return (
     <div className="flex-1 bg-gray-50 p-4">
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-black h-full">
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-black h-full relative">
         <KonvaWrapper
           width={1200}
           height={800}
+          scaleX={zoom}
+          scaleY={zoom}
           onMouseDown={handleMouseDown}
           onMousemove={handleMouseMove}
           onMouseup={handleMouseUp}
@@ -852,6 +870,31 @@ export default function Canvas() {
             )}
           </Layer>
         </KonvaWrapper>
+
+        {/* Controles de zoom en la esquina superior derecha */}
+        <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+          <button
+            onClick={handleZoomIn}
+            className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center hover:bg-gray-50 transition-colors"
+            title="Zoom In"
+          >
+            <Icon icon="mdi:zoom-in" className="text-xl text-gray-700" />
+          </button>
+          <button
+            onClick={handleZoomOut}
+            className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center hover:bg-gray-50 transition-colors"
+            title="Zoom Out"
+          >
+            <Icon icon="mdi:zoom-out" className="text-xl text-gray-700" />
+          </button>
+          <button
+            onClick={handleResetZoom}
+            className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center hover:bg-gray-50 transition-colors"
+            title="Reset Zoom"
+          >
+            <Icon icon="mdi:refresh" className="text-lg text-gray-700" />
+          </button>
+        </div>
       </div>
     </div>
   );
