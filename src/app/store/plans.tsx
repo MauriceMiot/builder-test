@@ -41,6 +41,7 @@ export type PlanShape = {
   seatStatus?: "available" | "sold" | "reserved";
   seatSection?: string;
   seatPrice?: number;
+  seatIndex?: number; // Índice de posición del asiento
 };
 
 export type GridConfig = {
@@ -49,6 +50,7 @@ export type GridConfig = {
   color: string;
   opacity: number;
   snapToGrid: boolean;
+  seatSize: number; // Nuevo: tamaño del asiento en cuadrados (ej: 2 = 2² = 4 cuadrados)
 };
 
 interface PlanStore {
@@ -139,6 +141,27 @@ interface PlanStore {
   // Snap to grid
   snapToGrid: (value: number) => number;
   snapShapeToGrid: (shape: Omit<PlanShape, "id">) => Omit<PlanShape, "id">;
+
+  // Calcular tamaño del asiento basado en la configuración
+  getSeatSize: () => number;
+
+  // Redimensionar todos los asientos existentes
+  resizeAllSeats: () => void;
+
+  // Funciones para validación de colocación de asientos
+  snapPositionToGrid: (x: number, y: number) => { x: number; y: number };
+  isSeatPositionValid: (x: number, y: number, seatSize: number) => boolean;
+  getOccupiedGridPositions: () => Set<string>;
+
+  // Funciones para validación al mover asientos
+  isSeatMoveValid: (seatId: string, newX: number, newY: number) => boolean;
+  getSeatPositions: (x: number, y: number, seatSize: number) => string[];
+
+  // Función para calcular índice de posición de asientos
+  updateSeatIndex: (seatId: string) => void;
+
+  // Función para calcular índices de todos los asientos
+  calculateAllSeatIndexes: () => void;
 }
 
 export const usePlanStore = create<PlanStore>()(
@@ -154,6 +177,7 @@ export const usePlanStore = create<PlanStore>()(
         color: "#E5E7EB",
         opacity: 0.5,
         snapToGrid: false,
+        seatSize: 1, // Valor por defecto para el tamaño del asiento
       },
       currentPath: [],
       isDrawingFreehand: false,
@@ -363,9 +387,41 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       updateGridConfig: (config) => {
-        set((state) => ({
-          gridConfig: { ...state.gridConfig, ...config },
-        }));
+        set((state) => {
+          const newGridConfig = { ...state.gridConfig, ...config };
+
+          // Si se cambió el tamaño del asiento, redimensionar todos los asientos existentes
+          if (
+            config.seatSize !== undefined &&
+            config.seatSize !== state.gridConfig.seatSize
+          ) {
+            const newSeatSize = config.seatSize * newGridConfig.size;
+            const updatedShapes = state.shapes.map((shape) => {
+              if (shape.type === "seat") {
+                // Mantener el centro del asiento y ajustar el tamaño
+                const centerX = shape.x + shape.width / 2;
+                const centerY = shape.y + shape.height / 2;
+                return {
+                  ...shape,
+                  width: newSeatSize,
+                  height: newSeatSize,
+                  x: centerX - newSeatSize / 2,
+                  y: centerY - newSeatSize / 2,
+                };
+              }
+              return shape;
+            });
+
+            return {
+              gridConfig: newGridConfig,
+              shapes: updatedShapes,
+            };
+          }
+
+          return {
+            gridConfig: newGridConfig,
+          };
+        });
       },
 
       toggleGrid: () => {
@@ -616,6 +672,218 @@ export const usePlanStore = create<PlanStore>()(
                 width: maxX - minX,
                 height: maxY - minY,
               };
+            }
+            return shape;
+          }),
+        }));
+      },
+
+      getSeatSize: () => {
+        const { gridConfig } = get();
+        // Calcular el tamaño del asiento basado en la configuración
+        // Si seatSize es 2, entonces el tamaño es 2² = 4 cuadrados
+        const seatSizeInSquares = gridConfig.seatSize;
+        const seatSizeInPixels = seatSizeInSquares * gridConfig.size;
+        return seatSizeInPixels;
+      },
+
+      resizeAllSeats: () => {
+        const { gridConfig } = get();
+        const newSeatSize = gridConfig.seatSize * gridConfig.size;
+
+        set((state) => ({
+          shapes: state.shapes.map((shape) => {
+            if (shape.type === "seat") {
+              // Mantener el centro del asiento y ajustar el tamaño
+              const centerX = shape.x + shape.width / 2;
+              const centerY = shape.y + shape.height / 2;
+              return {
+                ...shape,
+                width: newSeatSize,
+                height: newSeatSize,
+                x: centerX - newSeatSize / 2,
+                y: centerY - newSeatSize / 2,
+              };
+            }
+            return shape;
+          }),
+        }));
+      },
+
+      snapPositionToGrid: (x, y) => {
+        const { snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+        return { x: snappedX, y: snappedY };
+      },
+
+      isSeatPositionValid: (x, y, seatSize) => {
+        const { gridConfig, snapToGrid, getOccupiedGridPositions } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+
+        // Verificar si la posición está dentro de los límites del canvas (1200x800)
+        if (snappedX < 0 || snappedX + seatSize * gridConfig.size > 1200)
+          return false;
+        if (snappedY < 0 || snappedY + seatSize * gridConfig.size > 800)
+          return false;
+
+        // Verificar si alguna de las posiciones que ocuparía el asiento está ocupada
+        const occupiedPositions = getOccupiedGridPositions();
+        for (let i = 0; i < seatSize; i++) {
+          for (let j = 0; j < seatSize; j++) {
+            const posKey = `${snappedX + i * gridConfig.size},${
+              snappedY + j * gridConfig.size
+            }`;
+            if (occupiedPositions.has(posKey)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+
+      getOccupiedGridPositions: () => {
+        const { shapes, gridConfig, snapToGrid, getSeatSize } = get();
+        const occupiedPositions = new Set<string>();
+
+        shapes.forEach((shape) => {
+          if (shape.type === "seat") {
+            const snappedX = snapToGrid(shape.x);
+            const snappedY = snapToGrid(shape.y);
+            const seatSizeInSquares = getSeatSize() / gridConfig.size;
+
+            for (let i = 0; i < seatSizeInSquares; i++) {
+              for (let j = 0; j < seatSizeInSquares; j++) {
+                const posKey = `${snappedX + i * gridConfig.size},${
+                  snappedY + j * gridConfig.size
+                }`;
+                occupiedPositions.add(posKey);
+              }
+            }
+          }
+        });
+        return occupiedPositions;
+      },
+
+      isSeatMoveValid: (seatId, newX, newY) => {
+        const { gridConfig, snapToGrid, getOccupiedGridPositions } = get();
+        const seat = get().shapes.find((shape) => shape.id === seatId);
+        if (!seat) return false;
+
+        const snappedNewX = snapToGrid(newX);
+        const snappedNewY = snapToGrid(newY);
+
+        // Verificar si la nueva posición está dentro de los límites del canvas (1200x800)
+        if (snappedNewX < 0 || snappedNewX + seat.width > 1200) return false;
+        if (snappedNewY < 0 || snappedNewY + seat.height > 800) return false;
+
+        // Verificar si alguna de las posiciones que ocuparía el asiento en la nueva posición está ocupada
+        const occupiedPositions = getOccupiedGridPositions();
+        for (let i = 0; i < seat.width / gridConfig.size; i++) {
+          for (let j = 0; j < seat.height / gridConfig.size; j++) {
+            const posKey = `${snappedNewX + i * gridConfig.size},${
+              snappedNewY + j * gridConfig.size
+            }`;
+            if (occupiedPositions.has(posKey)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+
+      getSeatPositions: (x, y, seatSize) => {
+        const { gridConfig, snapToGrid } = get();
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+        const positions: string[] = [];
+
+        for (let i = 0; i < seatSize; i++) {
+          for (let j = 0; j < seatSize; j++) {
+            positions.push(
+              `${snappedX + i * gridConfig.size},${
+                snappedY + j * gridConfig.size
+              }`
+            );
+          }
+        }
+        return positions;
+      },
+
+      updateSeatIndex: (seatId) => {
+        const { shapes, snapToGrid } = get();
+        const seat = shapes.find((shape) => shape.id === seatId);
+
+        if (!seat || seat.type !== "seat") return;
+
+        // Obtener todos los asientos ordenados por posición (de arriba a abajo, de izquierda a derecha)
+        const seats = shapes
+          .filter((shape) => shape.type === "seat")
+          .sort((a, b) => {
+            // Primero ordenar por Y (fila), luego por X (columna)
+            const snappedAY = snapToGrid(a.y);
+            const snappedBY = snapToGrid(b.y);
+
+            if (snappedAY !== snappedBY) {
+              return snappedAY - snappedBY;
+            }
+
+            const snappedAX = snapToGrid(a.x);
+            const snappedBX = snapToGrid(b.x);
+            return snappedAX - snappedBX;
+          });
+
+        // Encontrar el índice del asiento seleccionado
+        const seatIndex = seats.findIndex((s) => s.id === seatId);
+
+        if (seatIndex !== -1) {
+          // Actualizar el asiento con su índice (empezando desde 1)
+          set((state) => ({
+            shapes: state.shapes.map((shape) => {
+              if (shape.id === seatId) {
+                return {
+                  ...shape,
+                  seatIndex: seatIndex + 1, // Índice basado en 1
+                };
+              }
+              return shape;
+            }),
+          }));
+        }
+      },
+
+      calculateAllSeatIndexes: () => {
+        const { shapes, snapToGrid } = get();
+
+        // Obtener todos los asientos ordenados por posición (de arriba a abajo, de izquierda a derecha)
+        const seats = shapes
+          .filter((shape) => shape.type === "seat")
+          .sort((a, b) => {
+            // Primero ordenar por Y (fila), luego por X (columna)
+            const snappedAY = snapToGrid(a.y);
+            const snappedBY = snapToGrid(b.y);
+
+            if (snappedAY !== snappedBY) {
+              return snappedAY - snappedBY;
+            }
+
+            const snappedAX = snapToGrid(a.x);
+            const snappedBX = snapToGrid(b.x);
+            return snappedAX - snappedBX;
+          });
+
+        // Actualizar todos los asientos con sus índices
+        set((state) => ({
+          shapes: state.shapes.map((shape) => {
+            if (shape.type === "seat") {
+              const seatIndex = seats.findIndex((s) => s.id === shape.id);
+              if (seatIndex !== -1) {
+                return {
+                  ...shape,
+                  seatIndex: seatIndex + 1, // Índice basado en 1
+                };
+              }
             }
             return shape;
           }),

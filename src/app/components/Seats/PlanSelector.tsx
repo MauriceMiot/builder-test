@@ -185,6 +185,15 @@ export default function PlanSelector({
                       </div>
                     )}
                     <div className="flex justify-between">
+                      <span className="text-gray-600">Tamaño asiento:</span>
+                      <span className="font-medium">
+                        {selectedPlan.gridConfig.seatSize} cuadrados (
+                        {selectedPlan.gridConfig.seatSize *
+                          selectedPlan.gridConfig.size}
+                        px)
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-gray-600">Snap to grid:</span>
                       <span className="font-medium">
                         {selectedPlan.gridConfig.snapToGrid

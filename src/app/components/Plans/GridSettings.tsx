@@ -3,8 +3,13 @@
 import { usePlanStore } from "../../store/plans";
 
 export default function GridSettings() {
-  const { gridConfig, updateGridConfig, toggleGrid, toggleSnapToGrid } =
-    usePlanStore();
+  const {
+    gridConfig,
+    updateGridConfig,
+    toggleGrid,
+    toggleSnapToGrid,
+    getSeatSize,
+  } = usePlanStore();
 
   return (
     <div className="p-8">
@@ -48,6 +53,30 @@ export default function GridSettings() {
             }
             className="w-full h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer"
           />
+        </div>
+
+        {/* Tamaño del asiento */}
+        <div className="space-y-4">
+          <label className="block text-base font-medium text-gray-700">
+            Tamaño del asiento: {gridConfig.seatSize} cuadrados ({getSeatSize()}
+            px)
+          </label>
+          <input
+            type="range"
+            min="1"
+            max="5"
+            step="1"
+            value={gridConfig.seatSize}
+            onChange={(e) =>
+              updateGridConfig({ seatSize: parseInt(e.target.value) })
+            }
+            className="w-full h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+          />
+          <p className="text-sm text-gray-600">
+            El tamaño del asiento se calcula como: {gridConfig.seatSize}² ={" "}
+            {gridConfig.seatSize * gridConfig.seatSize} cuadrados ={" "}
+            {getSeatSize()}px
+          </p>
         </div>
 
         {/* Color de la cuadrícula */}

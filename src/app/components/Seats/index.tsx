@@ -15,7 +15,7 @@ interface SeatMapProps {
 }
 
 export default function SeatMap({ onBackToHome }: SeatMapProps) {
-  const { shapes, importFromJSON } = usePlanStore();
+  const { shapes, importFromJSON, calculateAllSeatIndexes } = usePlanStore();
   const { selected, toggleSelect, setSelected } = useSeatStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,6 +86,7 @@ export default function SeatMap({ onBackToHome }: SeatMapProps) {
       const seatInfo = {
         id: shape.id,
         seatId: seatId,
+        seatIndex: shape.seatIndex || "N/A",
         seatNumber: shape.seatNumber || "N/A",
         seatPrice: shape.seatPrice || 0,
         seatSection: shape.seatSection || "N/A",
@@ -107,6 +108,7 @@ export default function SeatMap({ onBackToHome }: SeatMapProps) {
         return {
           id: seatShape?.id || `seat_${id}`,
           seatId: id,
+          seatIndex: seatShape?.seatIndex || "N/A",
           seatNumber: seatShape?.seatNumber || "N/A",
           seatPrice: seatShape?.seatPrice || 0,
           seatSection: seatShape?.seatSection || "N/A",
@@ -148,6 +150,11 @@ export default function SeatMap({ onBackToHome }: SeatMapProps) {
               gridConfig: selectedPlan.gridConfig,
             })
           );
+
+          // Calcular índices de todos los asientos después de cargar el plano
+          setTimeout(() => {
+            calculateAllSeatIndexes();
+          }, 100);
 
           // Log para debug
           console.log("Loaded plan shapes:", selectedPlan.shapes);
@@ -502,6 +509,9 @@ export default function SeatMap({ onBackToHome }: SeatMapProps) {
                             </span>
                             <span className="text-gray-400 text-sm ml-1">
                               - {seat.seatSection || "Sin sección"}
+                            </span>
+                            <span className="text-blue-600 text-xs ml-1">
+                              (Índice: {seat.seatIndex || "N/A"})
                             </span>
                             <span className="text-gray-800 ml-2 text-sm font-semibold">
                               ${seat.seatPrice ?? 0}

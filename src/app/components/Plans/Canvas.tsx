@@ -63,6 +63,12 @@ export default function Canvas() {
     updatePolygonVertex,
     removePolygonVertex,
     updatePreviewShape,
+    getSeatSize,
+    snapPositionToGrid,
+    isSeatPositionValid,
+    isSeatMoveValid,
+    getSeatPositions,
+    updateSeatIndex,
   } = usePlanStore();
 
   // Funciones de zoom
@@ -185,6 +191,10 @@ export default function Canvas() {
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [invalidSeatPosition, setInvalidSeatPosition] = useState(false);
+  const [seatHighlightPositions, setSeatHighlightPositions] = useState<
+    string[]
+  >([]);
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
@@ -198,7 +208,7 @@ export default function Canvas() {
       return;
     }
 
-    // Solo iniciar dibujo si se hace clic en el canvas vacío
+    // Solo procesar clics en el canvas vacío
     if (!clickedOnEmpty) {
       return;
     }
@@ -216,8 +226,46 @@ export default function Canvas() {
       } else {
         addPolygonPoint(pos.x, pos.y);
       }
+    } else if (currentTool === "seat") {
+      // Crear asiento directamente con un clic
+      const seatSizeInSquares = gridConfig.seatSize;
+
+      // Verificar si la posición es válida para colocar un asiento
+      if (isSeatPositionValid(pos.x, pos.y, seatSizeInSquares)) {
+        const seatSize = getSeatSize();
+        const snappedPos = snapPositionToGrid(pos.x, pos.y);
+
+        const newShape: Omit<PlanShape, "id"> = {
+          type: "seat",
+          x: snappedPos.x,
+          y: snappedPos.y,
+          width: seatSize,
+          height: seatSize,
+          fill: "#3B82F6",
+          stroke: "#1E40AF",
+          strokeWidth: 2,
+          rotation: 0,
+          draggable: true,
+          selected: false,
+        };
+
+        addShape(newShape);
+        // Actualizar el índice del asiento recién creado después de un breve delay
+        setTimeout(() => {
+          const newSeats = shapes.filter((s) => s.type === "seat");
+          if (newSeats.length > 0) {
+            const lastSeat = newSeats[newSeats.length - 1];
+            updateSeatIndex(lastSeat.id);
+          }
+        }, 100);
+        setInvalidSeatPosition(false);
+      } else {
+        setInvalidSeatPosition(true);
+        // Limpiar el mensaje después de 2 segundos
+        setTimeout(() => setInvalidSeatPosition(false), 2000);
+      }
     } else {
-      // Modo dibujo de figuras
+      // Modo dibujo de figuras (para otras formas)
       setStartPos(pos);
       setIsDrawing(true);
       updatePreviewShape(null);
@@ -232,11 +280,17 @@ export default function Canvas() {
     if (currentTool === "freehand" && isDrawingFreehand) {
       // Agregar punto al dibujo libre
       addPointToFreehand(pos.x, pos.y);
+    } else if (currentTool === "seat") {
+      // Resaltar el área que ocuparía el asiento
+      const seatSizeInSquares = gridConfig.seatSize;
+      const positions = getSeatPositions(pos.x, pos.y, seatSizeInSquares);
+      setSeatHighlightPositions(positions);
     } else if (
       isDrawing &&
       currentTool &&
       currentTool !== "freehand" &&
-      currentTool !== "polygon"
+      currentTool !== "polygon" &&
+      !["seat"].includes(currentTool)
     ) {
       // Preview de figuras normales en tiempo real
       const width = Math.abs(pos.x - startPos.x);
@@ -286,6 +340,7 @@ export default function Canvas() {
       }
     } else {
       updatePreviewShape(null);
+      setSeatHighlightPositions([]);
     }
   };
 
@@ -296,7 +351,7 @@ export default function Canvas() {
     } else if (
       isDrawing &&
       currentTool &&
-      !["freehand", "polygon"].includes(currentTool)
+      !["freehand", "polygon", "seat"].includes(currentTool) // Excluir asientos
     ) {
       const stage = e.target.getStage();
       const pos = stage?.getPointerPosition();
@@ -366,26 +421,44 @@ export default function Canvas() {
 
   const handleShapeClick = (shapeId: string) => {
     selectShape(shapeId);
+
+    // Si el shape seleccionado es un asiento, actualizar su índice
+    const shape = shapes.find((s) => s.id === shapeId);
+    if (shape?.type === "seat") {
+      updateSeatIndex(shapeId);
+    }
   };
 
   const handleShapeDragEnd = (shapeId: string, x: number, y: number) => {
-    // Obtener la configuración actual del grid
-    const { gridConfig } = usePlanStore.getState();
+    const shape = shapes.find((s) => s.id === shapeId);
 
-    // Solo aplicar snap to grid si está habilitado y el grid está activo
-    let finalX = x;
-    let finalY = y;
-
-    if (gridConfig.snapToGrid && gridConfig.enabled) {
-      finalX = snapToGrid(x);
-      finalY = snapToGrid(y);
+    // Validación especial para asientos
+    if (shape?.type === "seat") {
+      if (isSeatMoveValid(shapeId, x, y)) {
+        // Aplicar snap to grid si está habilitado
+        if (gridConfig.snapToGrid && gridConfig.enabled) {
+          const snappedX = snapToGrid(x);
+          const snappedY = snapToGrid(y);
+          updateShape(shapeId, { x: snappedX, y: snappedY });
+        } else {
+          updateShape(shapeId, { x, y });
+        }
+        // Actualizar el índice después de mover el asiento
+        setTimeout(() => updateSeatIndex(shapeId), 100);
+      } else {
+        // Si la posición no es válida, revertir a la posición original
+        updateShape(shapeId, { x: shape.x, y: shape.y });
+      }
+    } else {
+      // Para otras formas, comportamiento normal
+      if (gridConfig.snapToGrid && gridConfig.enabled) {
+        const snappedX = snapToGrid(x);
+        const snappedY = snapToGrid(y);
+        updateShape(shapeId, { x: snappedX, y: snappedY });
+      } else {
+        updateShape(shapeId, { x, y });
+      }
     }
-
-    // Actualizar la posición de manera suave
-    updateShape(shapeId, {
-      x: finalX,
-      y: finalY,
-    });
   };
 
   const handlePolygonDoubleClick = (shapeId: string) => {
@@ -732,6 +805,28 @@ export default function Canvas() {
                 )}
               </>
             )}
+
+            {/* Resaltado de área para asientos */}
+            {currentTool === "seat" && seatHighlightPositions.length > 0 && (
+              <>
+                {seatHighlightPositions.map((posKey, index) => {
+                  const [x, y] = posKey.split(",").map(Number);
+                  return (
+                    <Rect
+                      key={`highlight-${index}`}
+                      x={x}
+                      y={y}
+                      width={gridConfig.size}
+                      height={gridConfig.size}
+                      fill="#3B82F6"
+                      opacity={0.3}
+                      stroke="#1E40AF"
+                      strokeWidth={1}
+                    />
+                  );
+                })}
+              </>
+            )}
             {/* Figuras */}
             {shapes.map(renderShape)}
             {/* Línea de dibujo libre en tiempo real */}
@@ -895,6 +990,13 @@ export default function Canvas() {
             <Icon icon="mdi:refresh" className="text-lg text-gray-700" />
           </button>
         </div>
+
+        {/* Indicador de posición inválida para asientos */}
+        {invalidSeatPosition && currentTool === "seat" && (
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-20 animate-pulse">
+            No se puede colocar un asiento aquí
+          </div>
+        )}
       </div>
     </div>
   );

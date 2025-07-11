@@ -56,6 +56,7 @@ export default function Plans({ onBackToHome }: PlansProps) {
           color: "#E5E7EB",
           opacity: 0.5,
           snapToGrid: false,
+          seatSize: 1, // Valor por defecto para el tamaño del asiento
         },
       })
     );
