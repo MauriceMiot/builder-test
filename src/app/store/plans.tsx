@@ -12,7 +12,8 @@ export type ShapeType =
   | "stadium"
   | "polygon"
   | "regular-polygon"
-  | "seat";
+  | "seat"
+  | "selection";
 
 export type PlanShape = {
   id: string;
@@ -56,6 +57,7 @@ export type GridConfig = {
 interface PlanStore {
   shapes: PlanShape[];
   selectedShapeId: string | null;
+  selectedShapeIds: string[]; // Para selección múltiple
   isDrawing: boolean;
   currentTool: ShapeType | null;
   gridConfig: GridConfig;
@@ -162,6 +164,17 @@ interface PlanStore {
 
   // Función para calcular índices de todos los asientos
   calculateAllSeatIndexes: () => void;
+
+  // Funciones para movimiento grupal de asientos
+  moveSelectedSeats: (deltaX: number, deltaY: number) => void;
+  isSeatGroupMoveValid: (
+    seatIds: string[],
+    deltaX: number,
+    deltaY: number
+  ) => boolean;
+
+  // Funciones para selección por área
+  selectSeatsInArea: (x1: number, y1: number, x2: number, y2: number) => void;
 }
 
 export const usePlanStore = create<PlanStore>()(
@@ -169,6 +182,7 @@ export const usePlanStore = create<PlanStore>()(
     (set, get) => ({
       shapes: [],
       selectedShapeId: null,
+      selectedShapeIds: [],
       isDrawing: false,
       currentTool: null,
       gridConfig: {
@@ -219,7 +233,20 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       selectShape: (id) => {
-        set({ selectedShapeId: id });
+        set({ selectedShapeId: id, selectedShapeIds: id ? [id] : [] });
+      },
+
+      // Selección múltiple
+      selectMultiple: (ids) => {
+        console.log("selectMultiple llamado:", { ids });
+        set({
+          selectedShapeIds: ids,
+          selectedShapeId: ids.length > 0 ? ids[0] : null,
+        });
+      },
+
+      clearSelection: () => {
+        set({ selectedShapeId: null, selectedShapeIds: [] });
       },
 
       setCurrentTool: (tool) => {
@@ -390,24 +417,32 @@ export const usePlanStore = create<PlanStore>()(
         set((state) => {
           const newGridConfig = { ...state.gridConfig, ...config };
 
-          // Si se cambió el tamaño del asiento, redimensionar todos los asientos existentes
+          // Si se cambió el tamaño del asiento o el tamaño de la cuadrícula, redimensionar todos los asientos existentes
           if (
-            config.seatSize !== undefined &&
-            config.seatSize !== state.gridConfig.seatSize
+            (config.seatSize !== undefined &&
+              config.seatSize !== state.gridConfig.seatSize) ||
+            (config.size !== undefined && config.size !== state.gridConfig.size)
           ) {
-            const newSeatSize = config.seatSize * newGridConfig.size;
+            const newSeatSize =
+              newGridConfig.seatSize *
+              newGridConfig.seatSize *
+              newGridConfig.size;
+
             const updatedShapes = state.shapes.map((shape) => {
               if (shape.type === "seat") {
-                // Mantener el centro del asiento y ajustar el tamaño
-                const centerX = shape.x + shape.width / 2;
-                const centerY = shape.y + shape.height / 2;
-                return {
+                // Calcular la posición ajustada a la nueva cuadrícula
+                const gridSize = newGridConfig.size;
+                const snappedX = Math.round(shape.x / gridSize) * gridSize;
+                const snappedY = Math.round(shape.y / gridSize) * gridSize;
+
+                const updatedShape = {
                   ...shape,
                   width: newSeatSize,
                   height: newSeatSize,
-                  x: centerX - newSeatSize / 2,
-                  y: centerY - newSeatSize / 2,
+                  x: snappedX,
+                  y: snappedY,
                 };
+                return updatedShape;
               }
               return shape;
             });
@@ -440,15 +475,6 @@ export const usePlanStore = create<PlanStore>()(
             snapToGrid: !state.gridConfig.snapToGrid,
           },
         }));
-      },
-
-      clearSelection: () => {
-        set({ selectedShapeId: null });
-      },
-
-      selectMultiple: (ids) => {
-        // Por ahora solo seleccionamos el primero, pero podríamos expandir esto
-        set({ selectedShapeId: ids[0] || null });
       },
 
       exportToJSON: () => {
@@ -683,27 +709,32 @@ export const usePlanStore = create<PlanStore>()(
         // Calcular el tamaño del asiento basado en la configuración
         // Si seatSize es 2, entonces el tamaño es 2² = 4 cuadrados
         const seatSizeInSquares = gridConfig.seatSize;
-        const seatSizeInPixels = seatSizeInSquares * gridConfig.size;
+        const seatSizeInPixels =
+          seatSizeInSquares * seatSizeInSquares * gridConfig.size;
         return seatSizeInPixels;
       },
 
       resizeAllSeats: () => {
         const { gridConfig } = get();
-        const newSeatSize = gridConfig.seatSize * gridConfig.size;
+        const newSeatSize =
+          gridConfig.seatSize * gridConfig.seatSize * gridConfig.size;
 
         set((state) => ({
           shapes: state.shapes.map((shape) => {
             if (shape.type === "seat") {
-              // Mantener el centro del asiento y ajustar el tamaño
-              const centerX = shape.x + shape.width / 2;
-              const centerY = shape.y + shape.height / 2;
-              return {
+              // Calcular la posición ajustada a la cuadrícula
+              const gridSize = gridConfig.size;
+              const snappedX = Math.round(shape.x / gridSize) * gridSize;
+              const snappedY = Math.round(shape.y / gridSize) * gridSize;
+
+              const updatedShape = {
                 ...shape,
                 width: newSeatSize,
                 height: newSeatSize,
-                x: centerX - newSeatSize / 2,
-                y: centerY - newSeatSize / 2,
+                x: snappedX,
+                y: snappedY,
               };
+              return updatedShape;
             }
             return shape;
           }),
@@ -711,16 +742,20 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       snapPositionToGrid: (x, y) => {
-        const { snapToGrid } = get();
-        const snappedX = snapToGrid(x);
-        const snappedY = snapToGrid(y);
+        const { gridConfig } = get();
+        // Para asientos, siempre ajustar a la cuadrícula independientemente de la configuración
+        const gridSize = gridConfig.size;
+        const snappedX = Math.round(x / gridSize) * gridSize;
+        const snappedY = Math.round(y / gridSize) * gridSize;
         return { x: snappedX, y: snappedY };
       },
 
       isSeatPositionValid: (x, y, seatSize) => {
-        const { gridConfig, snapToGrid, getOccupiedGridPositions } = get();
-        const snappedX = snapToGrid(x);
-        const snappedY = snapToGrid(y);
+        const { gridConfig, getOccupiedGridPositions } = get();
+        // Para asientos, siempre ajustar a la cuadrícula independientemente de la configuración
+        const gridSize = gridConfig.size;
+        const snappedX = Math.round(x / gridSize) * gridSize;
+        const snappedY = Math.round(y / gridSize) * gridSize;
 
         // Verificar si la posición está dentro de los límites del canvas (1200x800)
         if (snappedX < 0 || snappedX + seatSize * gridConfig.size > 1200)
@@ -744,14 +779,18 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       getOccupiedGridPositions: () => {
-        const { shapes, gridConfig, snapToGrid, getSeatSize } = get();
+        const { shapes, gridConfig, getSeatSize } = get();
         const occupiedPositions = new Set<string>();
 
         shapes.forEach((shape) => {
           if (shape.type === "seat") {
-            const snappedX = snapToGrid(shape.x);
-            const snappedY = snapToGrid(shape.y);
-            const seatSizeInSquares = getSeatSize() / gridConfig.size;
+            // Para asientos, siempre ajustar a la cuadrícula independientemente de la configuración
+            const gridSize = gridConfig.size;
+            const snappedX = Math.round(shape.x / gridSize) * gridSize;
+            const snappedY = Math.round(shape.y / gridSize) * gridSize;
+            const seatSizeInSquares = Math.sqrt(
+              getSeatSize() / gridConfig.size
+            );
 
             for (let i = 0; i < seatSizeInSquares; i++) {
               for (let j = 0; j < seatSizeInSquares; j++) {
@@ -767,12 +806,14 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       isSeatMoveValid: (seatId, newX, newY) => {
-        const { gridConfig, snapToGrid, getOccupiedGridPositions } = get();
+        const { gridConfig, getOccupiedGridPositions } = get();
         const seat = get().shapes.find((shape) => shape.id === seatId);
         if (!seat) return false;
 
-        const snappedNewX = snapToGrid(newX);
-        const snappedNewY = snapToGrid(newY);
+        // Para asientos, siempre ajustar a la cuadrícula independientemente de la configuración
+        const gridSize = gridConfig.size;
+        const snappedNewX = Math.round(newX / gridSize) * gridSize;
+        const snappedNewY = Math.round(newY / gridSize) * gridSize;
 
         // Verificar si la nueva posición está dentro de los límites del canvas (1200x800)
         if (snappedNewX < 0 || snappedNewX + seat.width > 1200) return false;
@@ -794,9 +835,11 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       getSeatPositions: (x, y, seatSize) => {
-        const { gridConfig, snapToGrid } = get();
-        const snappedX = snapToGrid(x);
-        const snappedY = snapToGrid(y);
+        const { gridConfig } = get();
+        // Para asientos, siempre ajustar a la cuadrícula independientemente de la configuración
+        const gridSize = gridConfig.size;
+        const snappedX = Math.round(x / gridSize) * gridSize;
+        const snappedY = Math.round(y / gridSize) * gridSize;
         const positions: string[] = [];
 
         for (let i = 0; i < seatSize; i++) {
@@ -812,7 +855,7 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       updateSeatIndex: (seatId) => {
-        const { shapes, snapToGrid } = get();
+        const { shapes, gridConfig } = get();
         const seat = shapes.find((shape) => shape.id === seatId);
 
         if (!seat || seat.type !== "seat") return;
@@ -822,15 +865,16 @@ export const usePlanStore = create<PlanStore>()(
           .filter((shape) => shape.type === "seat")
           .sort((a, b) => {
             // Primero ordenar por Y (fila), luego por X (columna)
-            const snappedAY = snapToGrid(a.y);
-            const snappedBY = snapToGrid(b.y);
+            const gridSize = gridConfig.size;
+            const snappedAY = Math.round(a.y / gridSize) * gridSize;
+            const snappedBY = Math.round(b.y / gridSize) * gridSize;
 
             if (snappedAY !== snappedBY) {
               return snappedAY - snappedBY;
             }
 
-            const snappedAX = snapToGrid(a.x);
-            const snappedBX = snapToGrid(b.x);
+            const snappedAX = Math.round(a.x / gridSize) * gridSize;
+            const snappedBX = Math.round(b.x / gridSize) * gridSize;
             return snappedAX - snappedBX;
           });
 
@@ -888,6 +932,193 @@ export const usePlanStore = create<PlanStore>()(
             return shape;
           }),
         }));
+      },
+
+      // Funciones para movimiento grupal de asientos
+      moveSelectedSeats: (deltaX, deltaY) => {
+        const { selectedShapeIds, gridConfig, shapes } = get();
+
+        console.log("moveSelectedSeats llamado:", {
+          selectedShapeIds,
+          selectedShapeIdsLength: selectedShapeIds.length,
+          deltaX,
+          deltaY,
+        });
+
+        if (selectedShapeIds.length === 0) return;
+
+        // Filtrar solo asientos seleccionados
+        const selectedSeats = shapes.filter(
+          (shape) =>
+            selectedShapeIds.includes(shape.id) && shape.type === "seat"
+        );
+
+        if (selectedSeats.length === 0) {
+          console.log("No hay asientos seleccionados para mover");
+          return;
+        }
+
+        // Verificar si el movimiento es válido para todo el grupo
+        const isValidMove = get().isSeatGroupMoveValid(
+          selectedShapeIds,
+          deltaX,
+          deltaY
+        );
+        console.log("Validación de movimiento grupal:", { isValidMove });
+
+        if (isValidMove) {
+          console.log("Movimiento válido, actualizando posiciones...");
+          set((state) => ({
+            shapes: state.shapes.map((shape) => {
+              if (
+                selectedShapeIds.includes(shape.id) &&
+                shape.type === "seat"
+              ) {
+                // Ajustar a la cuadrícula
+                const gridSize = gridConfig.size;
+                const newX =
+                  Math.round((shape.x + deltaX) / gridSize) * gridSize;
+                const newY =
+                  Math.round((shape.y + deltaY) / gridSize) * gridSize;
+
+                console.log("Actualizando asiento:", {
+                  id: shape.id,
+                  oldPos: { x: shape.x, y: shape.y },
+                  newPos: { x: newX, y: newY },
+                });
+
+                return {
+                  ...shape,
+                  x: newX,
+                  y: newY,
+                };
+              }
+              return shape;
+            }),
+          }));
+
+          // Actualizar índices de todos los asientos seleccionados
+          selectedShapeIds.forEach((seatId) => {
+            setTimeout(() => get().updateSeatIndex(seatId), 100);
+          });
+        } else {
+          console.log("Movimiento no válido, no se actualiza");
+        }
+      },
+
+      isSeatGroupMoveValid: (seatIds, deltaX, deltaY) => {
+        const { shapes, gridConfig } = get();
+
+        // Verificar que todos los asientos del grupo puedan moverse
+        for (const seatId of seatIds) {
+          const seat = shapes.find((s) => s.id === seatId);
+          if (!seat || seat.type !== "seat") continue;
+
+          const gridSize = gridConfig.size;
+          const newX = Math.round((seat.x + deltaX) / gridSize) * gridSize;
+          const newY = Math.round((seat.y + deltaY) / gridSize) * gridSize;
+
+          // Verificar límites del canvas
+          if (newX < 0 || newX + seat.width > 1200) return false;
+          if (newY < 0 || newY + seat.height > 800) return false;
+
+          // Verificar conflictos con otros asientos (excluyendo los del grupo)
+          const occupiedPositions = get().getOccupiedGridPositions();
+          const seatSizeInSquares = Math.sqrt(
+            get().getSeatSize() / gridConfig.size
+          );
+
+          for (let i = 0; i < seatSizeInSquares; i++) {
+            for (let j = 0; j < seatSizeInSquares; j++) {
+              const posKey = `${newX + i * gridConfig.size},${
+                newY + j * gridConfig.size
+              }`;
+
+              // Solo verificar conflictos con asientos que no están en el grupo
+              const isOccupiedByGroup = seatIds.some((groupId) => {
+                const groupSeat = shapes.find((s) => s.id === groupId);
+                if (!groupSeat || groupSeat.type !== "seat") return false;
+
+                const groupSeatSizeInSquares = Math.sqrt(
+                  get().getSeatSize() / gridConfig.size
+                );
+                for (let gi = 0; gi < groupSeatSizeInSquares; gi++) {
+                  for (let gj = 0; gj < groupSeatSizeInSquares; gj++) {
+                    const groupPosKey = `${
+                      groupSeat.x + gi * gridConfig.size
+                    },${groupSeat.y + gj * gridConfig.size}`;
+                    if (groupPosKey === posKey) return true;
+                  }
+                }
+                return false;
+              });
+
+              if (occupiedPositions.has(posKey) && !isOccupiedByGroup) {
+                return false;
+              }
+            }
+          }
+        }
+
+        return true;
+      },
+
+      // Selección por área
+      selectSeatsInArea: (x1, y1, x2, y2) => {
+        const { shapes } = get();
+
+        // Calcular el área de selección
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+
+        // Encontrar todos los asientos dentro del área
+        const seatsInArea = shapes
+          .filter((shape) => shape.type === "seat")
+          .filter((seat) => {
+            // Verificar si el asiento intersecta con el área de selección
+            const seatRight = seat.x + seat.width;
+            const seatBottom = seat.y + seat.height;
+
+            const isInArea =
+              seat.x < maxX &&
+              seatRight > minX &&
+              seat.y < maxY &&
+              seatBottom > minY;
+
+            console.log("Verificando asiento:", {
+              id: seat.id,
+              seatPos: {
+                x: seat.x,
+                y: seat.y,
+                right: seatRight,
+                bottom: seatBottom,
+              },
+              area: { minX, maxX, minY, maxY },
+              isInArea,
+            });
+
+            return isInArea;
+          })
+          .map((seat) => seat.id);
+
+        console.log("Asientos encontrados en área:", seatsInArea);
+
+        // Seleccionar los asientos encontrados
+        if (seatsInArea.length > 0) {
+          console.log("Estableciendo selección múltiple:", seatsInArea);
+          set({
+            selectedShapeIds: seatsInArea,
+            selectedShapeId: seatsInArea[0],
+          });
+        } else {
+          console.log("No se encontraron asientos, limpiando selección");
+          set({
+            selectedShapeId: null,
+            selectedShapeIds: [],
+          });
+        }
       },
     }),
     {

@@ -30,6 +30,9 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
     y,
     width,
     height,
+    fill,
+    stroke,
+    strokeWidth,
     draggable,
     rotation,
     seatNumber,
@@ -89,8 +92,8 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
         y={centerY}
         data={seatPath}
         fill={getStatusColor()}
-        stroke="transparent"
-        strokeWidth={0}
+        stroke={strokeWidth > 0 ? stroke : "transparent"}
+        strokeWidth={strokeWidth}
         scaleX={scale}
         scaleY={scale}
       />

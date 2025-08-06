@@ -14,11 +14,13 @@ const tools: {
     | "seat"
     | "text"
     | "freehand"
+    | "selection"
     | null;
   label: string;
   icon: string;
 }[] = [
   { type: null, label: "Selección", icon: "👆" },
+  { type: "selection", label: "Selección Múltiple", icon: "🔲" },
   { type: "rectangle", label: "Rectángulo", icon: "⬜" },
   { type: "circle", label: "Círculo", icon: "⭕" },
   { type: "ellipse", label: "Óvalo", icon: "🥚" },

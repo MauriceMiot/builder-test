@@ -21,19 +21,31 @@ import PolygonVertex from "./PolygonVertex";
 import SeatSVG from "./SeatSVG";
 import KonvaWrapper from "./KonvaWrapper";
 
-// Variable para almacenar la figura copiada temporalmente
-let copiedShape: PlanShape | null = null;
+// Variable para almacenar las figuras copiadas temporalmente
+let copiedShapes: PlanShape[] = [];
 
 export default function Canvas() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const shapeRef = useRef<any>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [zoom, setZoom] = useState(1);
+  const [isPasteMode, setIsPasteMode] = useState(false);
+  const [seatHighlightPosition, setSeatHighlightPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectionArea, setSelectionArea] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const {
     shapes,
     currentTool,
     selectedShapeId,
+    selectedShapeIds,
     gridConfig,
     currentPath,
     isDrawingFreehand,
@@ -45,6 +57,7 @@ export default function Canvas() {
     previewShape,
     addShape,
     selectShape,
+    selectMultiple,
     updateShape,
     removeShape,
     clearSelection,
@@ -69,6 +82,8 @@ export default function Canvas() {
     isSeatMoveValid,
     getSeatPositions,
     updateSeatIndex,
+    moveSelectedSeats,
+    selectSeatsInArea,
   } = usePlanStore();
 
   // Funciones de zoom
@@ -86,10 +101,27 @@ export default function Canvas() {
 
   useEffect(() => {
     if (selectedShapeId && shapeRef.current && transformerRef.current) {
-      transformerRef.current.nodes([shapeRef.current]);
-      transformerRef.current.getLayer()?.batchDraw();
+      // Solo mostrar el transformer si hay una sola figura seleccionada
+      if (selectedShapeIds.length === 1) {
+        transformerRef.current.nodes([shapeRef.current]);
+        transformerRef.current.getLayer()?.batchDraw();
+      } else {
+        // Si hay selección múltiple, ocultar el transformer
+        transformerRef.current.nodes([]);
+        transformerRef.current.getLayer()?.batchDraw();
+      }
     }
-  }, [selectedShapeId, shapes]);
+  }, [selectedShapeId, selectedShapeIds, shapes]);
+
+  // Limpiar posición del highlight cuando cambie la herramienta
+  useEffect(() => {
+    if (currentTool !== "seat") {
+      setSeatHighlightPosition(null);
+    }
+    if (currentTool !== "selection") {
+      setSelectionArea(null);
+    }
+  }, [currentTool]);
 
   // Eliminar con tecla Suprimir/Delete/Backspace
   useEffect(() => {
@@ -123,6 +155,10 @@ export default function Canvas() {
       if (e.key === "Escape" && isEditingPolygon) {
         stopPolygonEditing();
       }
+      // Cancelar modo de pegado con Escape
+      if (e.key === "Escape" && isPasteMode) {
+        setIsPasteMode(false);
+      }
       // Traer al frente con Ctrl+Shift+Up
       if (
         (e.ctrlKey || e.metaKey) &&
@@ -143,11 +179,50 @@ export default function Canvas() {
         e.preventDefault();
         sendToBack(selectedShapeId);
       }
+
+      // Movimiento grupal de asientos con flechas
+      if (selectedShapeIds.length > 0) {
+        console.log(
+          "Tecla presionada:",
+          e.key,
+          "selectedShapeIds:",
+          selectedShapeIds
+        );
+
+        const gridSize = gridConfig.size;
+        let deltaX = 0;
+        let deltaY = 0;
+
+        switch (e.key) {
+          case "ArrowLeft":
+            deltaX = -gridSize;
+            break;
+          case "ArrowRight":
+            deltaX = gridSize;
+            break;
+          case "ArrowUp":
+            deltaY = -gridSize;
+            break;
+          case "ArrowDown":
+            deltaY = gridSize;
+            break;
+        }
+
+        if (deltaX !== 0 || deltaY !== 0) {
+          e.preventDefault();
+          console.log("Intentando mover asientos:", { deltaX, deltaY });
+          moveSelectedSeats(deltaX, deltaY);
+        }
+      } else {
+        console.log("No hay asientos seleccionados para movimiento grupal");
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     selectedShapeId,
+    selectedShapeIds,
+    gridConfig.size,
     removeShape,
     clearSelection,
     bringToFront,
@@ -156,38 +231,46 @@ export default function Canvas() {
     finishPolygonDrawing,
     isEditingPolygon,
     stopPolygonEditing,
+    isPasteMode,
+    moveSelectedSeats,
   ]);
 
   useEffect(() => {
     const handleCopyPaste = (e: KeyboardEvent) => {
       // Copiar (Ctrl+C o Cmd+C)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
-        if (selectedShapeId) {
+        if (selectedShapeIds.length > 0) {
+          // Copiar selección múltiple
+          const selectedShapes = shapes.filter((s) =>
+            selectedShapeIds.includes(s.id)
+          );
+          copiedShapes = selectedShapes.map((shape) => ({ ...shape }));
+          console.log("Copiadas", copiedShapes.length, "formas");
+        } else if (selectedShapeId) {
+          // Copiar selección individual
           const shape = shapes.find((s) => s.id === selectedShapeId);
           if (shape) {
-            copiedShape = { ...shape };
+            copiedShapes = [{ ...shape }];
+            console.log("Copiada 1 forma");
           }
         }
       }
       // Pegar (Ctrl+V o Cmd+V)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
-        if (copiedShape) {
-          // Crear una copia con nuevo ID y posición desplazada
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { x, y, id, ...rest } = copiedShape;
-          const newShape = {
-            ...rest,
-            x: x + 30,
-            y: y + 30,
-            selected: false,
-          };
-          addShape(newShape);
+        if (copiedShapes.length > 0) {
+          // Activar modo de pegado
+          setIsPasteMode(true);
+          console.log(
+            "Modo de pegado activado. Haz clic donde quieres pegar las",
+            copiedShapes.length,
+            "formas"
+          );
         }
       }
     };
     window.addEventListener("keydown", handleCopyPaste);
     return () => window.removeEventListener("keydown", handleCopyPaste);
-  }, [selectedShapeId, shapes, addShape]);
+  }, [selectedShapeId, selectedShapeIds, shapes, addShape]);
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
@@ -199,6 +282,34 @@ export default function Canvas() {
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
     const clickedOnEmpty = e.target === stage;
+
+    // Manejar modo de pegado
+    if (isPasteMode && clickedOnEmpty) {
+      const pos = stage?.getPointerPosition();
+      if (pos && copiedShapes.length > 0) {
+        // Calcular el offset basado en la posición del clic
+        const firstShape = copiedShapes[0];
+        const offsetX = pos.x - firstShape.x;
+        const offsetY = pos.y - firstShape.y;
+
+        // Crear copias de todas las formas en la nueva posición
+        copiedShapes.forEach((originalShape) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { id, ...rest } = originalShape;
+          const newShape = {
+            ...rest,
+            x: originalShape.x + offsetX,
+            y: originalShape.y + offsetY,
+            selected: false,
+          };
+          addShape(newShape);
+        });
+
+        console.log("Pegadas", copiedShapes.length, "formas en posición", pos);
+        setIsPasteMode(false);
+        return;
+      }
+    }
 
     // Si no hay herramienta seleccionada, solo manejar selección
     if (!currentTool) {
@@ -227,18 +338,24 @@ export default function Canvas() {
         addPolygonPoint(pos.x, pos.y);
       }
     } else if (currentTool === "seat") {
-      // Crear asiento directamente con un clic
+      // Crear asiento directamente en la posición del highlight (que ya está ajustada a la cuadrícula)
       const seatSizeInSquares = gridConfig.seatSize;
 
-      // Verificar si la posición es válida para colocar un asiento
-      if (isSeatPositionValid(pos.x, pos.y, seatSizeInSquares)) {
+      // Solo crear si hay una posición de highlight disponible
+      if (
+        seatHighlightPosition &&
+        isSeatPositionValid(
+          seatHighlightPosition.x,
+          seatHighlightPosition.y,
+          seatSizeInSquares
+        )
+      ) {
         const seatSize = getSeatSize();
-        const snappedPos = snapPositionToGrid(pos.x, pos.y);
 
         const newShape: Omit<PlanShape, "id"> = {
           type: "seat",
-          x: snappedPos.x,
-          y: snappedPos.y,
+          x: seatHighlightPosition.x,
+          y: seatHighlightPosition.y,
           width: seatSize,
           height: seatSize,
           fill: "#3B82F6",
@@ -264,6 +381,11 @@ export default function Canvas() {
         // Limpiar el mensaje después de 2 segundos
         setTimeout(() => setInvalidSeatPosition(false), 2000);
       }
+    } else if (currentTool === "selection") {
+      // Iniciar selección por área
+      setStartPos(pos);
+      setIsDrawing(true);
+      setSelectionArea({ x: pos.x, y: pos.y, width: 0, height: 0 });
     } else {
       // Modo dibujo de figuras (para otras formas)
       setStartPos(pos);
@@ -285,6 +407,18 @@ export default function Canvas() {
       const seatSizeInSquares = gridConfig.seatSize;
       const positions = getSeatPositions(pos.x, pos.y, seatSizeInSquares);
       setSeatHighlightPositions(positions);
+
+      // Almacenar la posición ajustada a la cuadrícula para crear el asiento
+      const snappedPos = snapPositionToGrid(pos.x, pos.y);
+      setSeatHighlightPosition(snappedPos);
+    } else if (currentTool === "selection" && isDrawing) {
+      // Actualizar área de selección
+      const width = Math.abs(pos.x - startPos.x);
+      const height = Math.abs(pos.y - startPos.y);
+      const x = Math.min(startPos.x, pos.x);
+      const y = Math.min(startPos.y, pos.y);
+
+      setSelectionArea({ x, y, width, height });
     } else if (
       isDrawing &&
       currentTool &&
@@ -341,6 +475,8 @@ export default function Canvas() {
     } else {
       updatePreviewShape(null);
       setSeatHighlightPositions([]);
+      setSeatHighlightPosition(null);
+      setSelectionArea(null);
     }
   };
 
@@ -348,10 +484,23 @@ export default function Canvas() {
     if (currentTool === "freehand") {
       // Finalizar dibujo libre
       finishFreehandDrawing();
+    } else if (currentTool === "selection" && isDrawing) {
+      // Finalizar selección por área
+      if (selectionArea) {
+        console.log("Área de selección:", selectionArea);
+        selectSeatsInArea(
+          selectionArea.x,
+          selectionArea.y,
+          selectionArea.x + selectionArea.width,
+          selectionArea.y + selectionArea.height
+        );
+      }
+      setSelectionArea(null);
+      setIsDrawing(false);
     } else if (
       isDrawing &&
       currentTool &&
-      !["freehand", "polygon", "seat"].includes(currentTool) // Excluir asientos
+      !["freehand", "polygon", "seat", "selection"].includes(currentTool) // Excluir asientos y selección
     ) {
       const stage = e.target.getStage();
       const pos = stage?.getPointerPosition();
@@ -419,13 +568,35 @@ export default function Canvas() {
     handleMouseUp(e as unknown as Konva.KonvaEventObject<MouseEvent>);
   };
 
-  const handleShapeClick = (shapeId: string) => {
-    selectShape(shapeId);
-
-    // Si el shape seleccionado es un asiento, actualizar su índice
+  const handleShapeClick = (shapeId: string, event?: MouseEvent) => {
     const shape = shapes.find((s) => s.id === shapeId);
-    if (shape?.type === "seat") {
-      updateSeatIndex(shapeId);
+
+    // Selección múltiple con Ctrl/Cmd
+    if (event && (event.ctrlKey || event.metaKey)) {
+      const newSelectedIds = selectedShapeIds.includes(shapeId)
+        ? selectedShapeIds.filter((id) => id !== shapeId)
+        : [...selectedShapeIds, shapeId];
+
+      selectMultiple(newSelectedIds);
+
+      // Si el shape seleccionado es un asiento, actualizar su índice
+      if (shape?.type === "seat") {
+        updateSeatIndex(shapeId);
+      }
+    } else {
+      // Selección simple - si ya está seleccionado, mantener la selección múltiple
+      if (selectedShapeIds.includes(shapeId) && selectedShapeIds.length > 1) {
+        // Si ya está en la selección múltiple, mantener la selección
+        return;
+      }
+
+      // Selección simple
+      selectShape(shapeId);
+
+      // Si el shape seleccionado es un asiento, actualizar su índice
+      if (shape?.type === "seat") {
+        updateSeatIndex(shapeId);
+      }
     }
   };
 
@@ -435,14 +606,11 @@ export default function Canvas() {
     // Validación especial para asientos
     if (shape?.type === "seat") {
       if (isSeatMoveValid(shapeId, x, y)) {
-        // Aplicar snap to grid si está habilitado
-        if (gridConfig.snapToGrid && gridConfig.enabled) {
-          const snappedX = snapToGrid(x);
-          const snappedY = snapToGrid(y);
-          updateShape(shapeId, { x: snappedX, y: snappedY });
-        } else {
-          updateShape(shapeId, { x, y });
-        }
+        // Siempre ajustar a la cuadrícula para asientos, independientemente de la configuración
+        const gridSize = gridConfig.size;
+        const snappedX = Math.round(x / gridSize) * gridSize;
+        const snappedY = Math.round(y / gridSize) * gridSize;
+        updateShape(shapeId, { x: snappedX, y: snappedY });
         // Actualizar el índice después de mover el asiento
         setTimeout(() => updateSeatIndex(shapeId), 100);
       } else {
@@ -493,21 +661,42 @@ export default function Canvas() {
 
   const renderShape = (shape: PlanShape) => {
     const isSelected = selectedShapeId === shape.id;
-    const strokeColor = shape.stroke;
-    const strokeWidth = shape.strokeWidth;
+    const isInMultiSelection = selectedShapeIds.includes(shape.id);
+
+    // Para asientos, solo mostrar borde cuando están seleccionados
+    let strokeColor = shape.stroke;
+    let strokeWidth = shape.strokeWidth;
+
+    if (shape.type === "seat") {
+      if (isInMultiSelection) {
+        strokeColor = "#FF6B6B";
+        strokeWidth = 3;
+      } else {
+        strokeColor = "transparent"; // Sin borde para asientos no seleccionados
+        strokeWidth = 0;
+      }
+    } else {
+      // Para otras formas, mantener el comportamiento original
+      strokeColor = isInMultiSelection ? "#FF6B6B" : shape.stroke;
+      strokeWidth = isInMultiSelection ? 3 : shape.strokeWidth;
+    }
+
+    const fillColor = isInMultiSelection ? "#FFE6E6" : shape.fill;
 
     const commonProps = {
       x: shape.x,
       y: shape.y,
       width: shape.width,
       height: shape.height,
-      fill: shape.fill,
+      fill: fillColor,
       stroke: strokeColor,
       strokeWidth,
       draggable: true,
       rotation: shape.rotation,
-      onClick: () => handleShapeClick(shape.id),
-      onTap: () => handleShapeClick(shape.id),
+      onClick: (e: Konva.KonvaEventObject<MouseEvent>) =>
+        handleShapeClick(shape.id, e.evt),
+      onTap: (e: Konva.KonvaEventObject<MouseEvent>) =>
+        handleShapeClick(shape.id, e.evt),
       onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
         handleShapeDragEnd(shape.id, e.target.x(), e.target.y());
       },
@@ -524,7 +713,7 @@ export default function Canvas() {
             radius={Math.min(shape.width, shape.height) / 2}
             x={shape.x + shape.width / 2}
             y={shape.y + shape.height / 2}
-            fill={shape.fill}
+            fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             draggable={true}
@@ -548,7 +737,7 @@ export default function Canvas() {
             y={shape.y + shape.height / 2}
             radiusX={shape.width / 2}
             radiusY={shape.height / 2}
-            fill={shape.fill}
+            fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             draggable={true}
@@ -614,7 +803,7 @@ export default function Canvas() {
             y={shape.y}
             width={shape.width}
             height={shape.height}
-            fill={shape.fill}
+            fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             draggable={true}
@@ -634,7 +823,7 @@ export default function Canvas() {
           <Line
             key={shape.id}
             points={shape.points || []}
-            fill={shape.fill}
+            fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             closed={shape.closed || false}
@@ -658,7 +847,7 @@ export default function Canvas() {
             text={shape.text || "Texto"}
             fontSize={shape.fontSize || 16}
             fontFamily={shape.fontFamily || "Arial"}
-            fill={shape.fill}
+            fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             draggable={true}
@@ -676,7 +865,7 @@ export default function Canvas() {
           <Line
             key={shape.id}
             points={shape.points || []}
-            fill={shape.fill}
+            fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             closed={shape.closed || false}
@@ -691,6 +880,16 @@ export default function Canvas() {
           />
         );
       case "seat":
+        const isInMultiSelection = selectedShapeIds.includes(shape.id);
+        console.log("Renderizando asiento:", {
+          id: shape.id,
+          isSelected,
+          isInMultiSelection,
+          selectedShapeIds,
+          strokeColor,
+          strokeWidth,
+        });
+
         return (
           <SeatSVG
             key={shape.id}
@@ -698,7 +897,7 @@ export default function Canvas() {
             y={shape.y}
             width={shape.width}
             height={shape.height}
-            fill={shape.fill}
+            fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             draggable={true}
@@ -707,6 +906,7 @@ export default function Canvas() {
             seatStatus={shape.seatStatus}
             seatSection={shape.seatSection}
             seatPrice={shape.seatPrice}
+            isSelected={isSelected}
             onClick={() => handleShapeClick(shape.id)}
             onTap={() => handleShapeClick(shape.id)}
             onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
@@ -827,6 +1027,22 @@ export default function Canvas() {
                 })}
               </>
             )}
+
+            {/* Área de selección */}
+            {selectionArea && (
+              <Rect
+                x={selectionArea.x}
+                y={selectionArea.y}
+                width={selectionArea.width}
+                height={selectionArea.height}
+                fill="#3B82F6"
+                opacity={0.2}
+                stroke="#1E40AF"
+                strokeWidth={2}
+                dash={[5, 5]}
+              />
+            )}
+
             {/* Figuras */}
             {shapes.map(renderShape)}
             {/* Línea de dibujo libre en tiempo real */}
@@ -995,6 +1211,20 @@ export default function Canvas() {
         {invalidSeatPosition && currentTool === "seat" && (
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-20 animate-pulse">
             No se puede colocar un asiento aquí
+          </div>
+        )}
+
+        {/* Indicador de selección múltiple */}
+        {selectedShapeIds.length > 1 && (
+          <div className="absolute top-4 left-4 bg-blue-500 text-white px-3 py-2 rounded-lg shadow-lg z-20">
+            {selectedShapeIds.length} asientos seleccionados
+          </div>
+        )}
+
+        {/* Indicador de modo de pegado */}
+        {isPasteMode && (
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-20 animate-pulse">
+            Haz clic donde quieres pegar las {copiedShapes.length} formas
           </div>
         )}
       </div>

@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Builder Test - Editor de Planos
 
-## Getting Started
+Una aplicación web para crear y editar planos con diferentes herramientas de dibujo.
 
-First, run the development server:
+## Funcionalidades
+
+### Herramientas de Dibujo
+
+- **Rectángulo**: Dibuja rectángulos arrastrando el mouse
+- **Círculo**: Dibuja círculos arrastrando el mouse
+- **Óvalo**: Dibuja óvalos arrastrando el mouse
+- **Triángulo**: Dibuja triángulos arrastrando el mouse
+- **Estadio**: Dibuja formas de estadio arrastrando el mouse
+- **Polígono Regular**: Dibuja polígonos regulares con configurable número de lados
+- **Polígono Irregular**: Dibuja polígonos irregulares haciendo clic en los vértices
+- **Texto**: Agrega texto al plano
+- **Dibujo Libre**: Dibuja libremente con el mouse
+
+### Sistema de Asientos
+
+- **Asiento**: Crea asientos con un solo clic en cualquier lugar del plano
+  - Selecciona la herramienta "Asiento" (💺) en la barra de herramientas
+  - Haz clic en cualquier lugar del plano para crear un asiento
+  - Los asientos se ajustan automáticamente al tamaño de la cuadrícula configurada
+  - El tamaño del asiento se calcula como: `seatSize² * gridSize` píxeles
+  - Los asientos siempre se alinean perfectamente con la cuadrícula
+  - El sistema valida automáticamente que no haya conflictos de posición
+  - Se muestra feedback visual cuando se crea un asiento exitosamente
+
+### Configuración de Cuadrícula
+
+- Activar/desactivar cuadrícula
+- Configurar tamaño de cuadrícula
+- Configurar color y opacidad
+- Activar/desactivar snap to grid
+- Configurar tamaño de asientos
+
+### Gestión de Planos
+
+- Crear nuevos planos
+- Guardar planos con nombre
+- Cargar planos guardados
+- Exportar/importar planos en formato JSON
+
+## Instalación
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Uso
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Seleccionar herramienta**: Haz clic en una herramienta en la barra lateral izquierda
+2. **Dibujar**: Para la mayoría de herramientas, arrastra el mouse en el canvas
+3. **Crear asientos**: Selecciona la herramienta asiento y haz clic donde quieras colocarlo
+4. **Editar**: Selecciona una forma para editarla en el panel de propiedades
+5. **Guardar**: Usa el botón "Guardar Plano" para guardar tu trabajo
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tecnologías
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js 14
+- React 18
+- TypeScript
+- Konva.js (para el canvas)
+- Zustand (para el estado)
+- Tailwind CSS (para los estilos)
