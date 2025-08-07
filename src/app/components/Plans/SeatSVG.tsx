@@ -30,7 +30,7 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
     y,
     width,
     height,
-    fill,
+    // fill,
     stroke,
     strokeWidth,
     draggable,
