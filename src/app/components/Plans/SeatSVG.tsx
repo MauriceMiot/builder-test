@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
-import { Group, Text, Path } from "react-konva";
+import { Group, Text, Rect } from "react-konva";
 import Konva from "konva";
 
 interface SeatSVGProps {
@@ -30,7 +30,6 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
     y,
     width,
     height,
-    // fill,
     stroke,
     strokeWidth,
     draggable,
@@ -62,19 +61,6 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
     }
   };
 
-  // Path del SVG de asiento (escalado y centrado)
-  const seatPath =
-    "M5 9.15V7c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v2.16c-1.16.41-2 1.51-2 2.81V14H7v-2.04c0-1.29-.84-2.4-2-2.81M20 10c-1.1 0-2 .9-2 2v3H6v-3a2 2 0 1 0-4 0v5c0 1.1.9 2 2 2v2h2v-2h12v2h2v-2c1.1 0 2-.9 2-2v-5c0-1.1-.9-2-2-2";
-
-  // Escalar el path para que quepa en el tamaño especificado
-  const scale = Math.min(width / 24, height / 24);
-  const scaledWidth = 24 * scale;
-  const scaledHeight = 24 * scale;
-
-  // Centrar el asiento
-  const centerX = width / 2 - scaledWidth / 2;
-  const centerY = height / 2 - scaledHeight / 2;
-
   return (
     <Group
       ref={ref}
@@ -86,25 +72,25 @@ const SeatSVG = forwardRef<Konva.Group, SeatSVGProps>((props, ref) => {
       x={x}
       y={y}
     >
-      {/* SVG del asiento */}
-      <Path
-        x={centerX}
-        y={centerY}
-        data={seatPath}
+      {/* Rectángulo simple para el asiento */}
+      <Rect
+        x={0}
+        y={0}
+        width={width}
+        height={height}
         fill={getStatusColor()}
-        stroke={strokeWidth > 0 ? stroke : "transparent"}
-        strokeWidth={strokeWidth}
-        scaleX={scale}
-        scaleY={scale}
+        stroke={strokeWidth > 0 ? stroke : "#374151"}
+        strokeWidth={strokeWidth || 1}
+        cornerRadius={2}
       />
 
       {/* Número del asiento */}
       {seatNumber && (
         <Text
-          x={width / 2 - 15}
-          y={height / 2 - 8}
+          x={width / 2 - 6}
+          y={height / 2 - 4}
           text={seatNumber}
-          fontSize={Math.max(8, Math.min(12, scale * 6))}
+          fontSize={Math.max(8, Math.min(16, Math.min(width, height) * 0.4))}
           fontFamily="Arial"
           fill="white"
           align="center"

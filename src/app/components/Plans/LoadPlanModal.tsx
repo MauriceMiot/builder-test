@@ -32,7 +32,7 @@ export default function LoadPlanModal({
         const plans = JSON.parse(localStorage.getItem("savedPlans") || "[]");
         setSavedPlans(plans);
       } catch (error) {
-        console.error("Error loading plans:", error);
+        console.log("Error loading plans:", error);
         setSavedPlans([]);
       }
     }

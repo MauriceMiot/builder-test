@@ -7,6 +7,7 @@ export default function PropertiesPanel() {
   const {
     shapes,
     selectedShapeId,
+    selectedShapeIds,
     updateShape,
     bringToFront,
     sendToBack,
@@ -14,6 +15,13 @@ export default function PropertiesPanel() {
   } = usePlanStore();
 
   const selectedShape = shapes.find((shape) => shape.id === selectedShapeId);
+
+  // Detectar si hay múltiples asientos seleccionados
+  const selectedSeats = shapes.filter(
+    (shape) => shape.type === "seat" && selectedShapeIds.includes(shape.id)
+  );
+
+  const hasMultipleSeats = selectedSeats.length > 1;
 
   if (!selectedShape) {
     return (
@@ -34,6 +42,102 @@ export default function PropertiesPanel() {
         Propiedades de la Figura
       </h3>
       <div className="space-y-8 gap-2">
+        {/* Propiedades específicas para asientos */}
+        {selectedShape?.type === "seat" && (
+          <div className="space-y-4">
+            {/* Información de selección múltiple */}
+            {hasMultipleSeats && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-800">
+                  🎯 <strong>Selección Múltiple:</strong> {selectedSeats.length}{" "}
+                  asientos seleccionados
+                </p>
+              </div>
+            )}
+
+            <label className="block text-base font-medium text-gray-700">
+              Número de asiento
+            </label>
+            <input
+              type="text"
+              value={selectedShape.seatNumber || ""}
+              onChange={(e) =>
+                updateShape(selectedShape.id, { seatNumber: e.target.value })
+              }
+              className="form-input text-base py-3"
+            />
+            <label className="block text-base font-medium text-gray-700">
+              Estado
+            </label>
+            <select
+              value={selectedShape.seatStatus || "available"}
+              onChange={(e) =>
+                updateShape(selectedShape.id, {
+                  seatStatus: e.target.value as
+                    | "available"
+                    | "sold"
+                    | "reserved",
+                })
+              }
+              className="form-select text-base py-3"
+            >
+              <option value="available">Disponible</option>
+              <option value="reserved">Reservado</option>
+              <option value="sold">Vendido</option>
+            </select>
+            <label className="block text-base font-medium text-gray-700">
+              Sección{" "}
+              {hasMultipleSeats && `(para ${selectedSeats.length} asientos)`}
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={selectedShape.seatSection || ""}
+                onChange={(e) => {
+                  const newSection = e.target.value;
+                  if (hasMultipleSeats) {
+                    // Aplicar a todos los asientos seleccionados
+                    selectedSeats.forEach((seat) => {
+                      updateShape(seat.id, { seatSection: newSection });
+                    });
+                  } else {
+                    // Aplicar solo al asiento seleccionado
+                    updateShape(selectedShape.id, { seatSection: newSection });
+                  }
+                }}
+                className="form-input text-base py-3 flex-1"
+                placeholder="Ej: VIP, PALCO, LUNETA"
+              />
+              {hasMultipleSeats && (
+                <button
+                  onClick={() => {
+                    // Limpiar sección de todos los asientos seleccionados
+                    selectedSeats.forEach((seat) => {
+                      updateShape(seat.id, { seatSection: "" });
+                    });
+                  }}
+                  className="px-3 py-3 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                  title="Limpiar sección de todos"
+                >
+                  🗑️
+                </button>
+              )}
+            </div>
+            <label className="block text-base font-medium text-gray-700">
+              Precio
+            </label>
+            <input
+              type="number"
+              value={selectedShape.seatPrice || 0}
+              onChange={(e) =>
+                updateShape(selectedShape.id, {
+                  seatPrice: parseFloat(e.target.value),
+                })
+              }
+              className="form-input text-base py-3"
+            />
+          </div>
+        )}
         {/* Posición */}
         <div className="flex justify-between items-center gap-2">
           <div className="w-1/2 flex items-center gap-2 justify-center space-y-4">
@@ -259,66 +363,6 @@ export default function PropertiesPanel() {
               value={selectedShape.text || ""}
               onChange={(e) =>
                 updateShape(selectedShape.id, { text: e.target.value })
-              }
-              className="form-input text-base py-3"
-            />
-          </div>
-        )}
-
-        {/* Propiedades específicas para asientos */}
-        {selectedShape?.type === "seat" && (
-          <div className="space-y-4">
-            <label className="block text-base font-medium text-gray-700">
-              Número de asiento
-            </label>
-            <input
-              type="text"
-              value={selectedShape.seatNumber || ""}
-              onChange={(e) =>
-                updateShape(selectedShape.id, { seatNumber: e.target.value })
-              }
-              className="form-input text-base py-3"
-            />
-            <label className="block text-base font-medium text-gray-700">
-              Estado
-            </label>
-            <select
-              value={selectedShape.seatStatus || "available"}
-              onChange={(e) =>
-                updateShape(selectedShape.id, {
-                  seatStatus: e.target.value as
-                    | "available"
-                    | "sold"
-                    | "reserved",
-                })
-              }
-              className="form-select text-base py-3"
-            >
-              <option value="available">Disponible</option>
-              <option value="reserved">Reservado</option>
-              <option value="sold">Vendido</option>
-            </select>
-            <label className="block text-base font-medium text-gray-700">
-              Sección
-            </label>
-            <input
-              type="text"
-              value={selectedShape.seatSection || ""}
-              onChange={(e) =>
-                updateShape(selectedShape.id, { seatSection: e.target.value })
-              }
-              className="form-input text-base py-3"
-            />
-            <label className="block text-base font-medium text-gray-700">
-              Precio
-            </label>
-            <input
-              type="number"
-              value={selectedShape.seatPrice || 0}
-              onChange={(e) =>
-                updateShape(selectedShape.id, {
-                  seatPrice: parseFloat(e.target.value),
-                })
               }
               className="form-input text-base py-3"
             />

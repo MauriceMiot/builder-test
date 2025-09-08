@@ -72,60 +72,18 @@ export default function SeatMap({ onBackToHome }: SeatMapProps) {
 
   // Función helper para manejar la selección y logging de asientos
   const handleSeatSelection = (shape: PlanShape) => {
-    console.log("handleSeatSelection called with shape:", shape);
-    console.log("Current selected seats:", selected);
-
     if (shape.type === "seat" && shape.seatStatus === "available") {
       const seatId = parseInt(shape.id.replace(/\D/g, ""));
-      console.log("Extracted seatId:", seatId);
 
       toggleSelect(seatId);
-      console.log("After toggleSelect, selected seats:", selected);
-
-      // Loggear información del asiento seleccionado
-      const seatInfo = {
-        id: shape.id,
-        seatId: seatId,
-        seatIndex: shape.seatIndex || "N/A",
-        seatNumber: shape.seatNumber || "N/A",
-        seatPrice: shape.seatPrice || 0,
-        seatSection: shape.seatSection || "N/A",
-        seatStatus: shape.seatStatus || "available",
-      };
-
-      console.log("Asiento seleccionado:", seatInfo);
 
       // Obtener todos los asientos seleccionados actualmente
       const currentSelected = selected.includes(seatId)
         ? selected.filter((id) => id !== seatId)
         : [...selected, seatId];
 
-      // Crear array con información completa de todos los asientos seleccionados
-      const selectedSeatsInfo = currentSelected.map((id) => {
-        const seatShape = shapes.find(
-          (s) => s.type === "seat" && parseInt(s.id.replace(/\D/g, "")) === id
-        );
-        return {
-          id: seatShape?.id || `seat_${id}`,
-          seatId: id,
-          seatIndex: seatShape?.seatIndex || "N/A",
-          seatNumber: seatShape?.seatNumber || "N/A",
-          seatPrice: seatShape?.seatPrice || 0,
-          seatSection: seatShape?.seatSection || "N/A",
-        };
-      });
-
-      console.log("Todos los asientos seleccionados:", selectedSeatsInfo);
-      console.log("Total de asientos:", selectedSeatsInfo.length);
-      console.log(
-        "Precio total:",
-        selectedSeatsInfo.reduce((sum, seat) => sum + seat.seatPrice, 0)
-      );
-    } else {
-      console.log("Shape is not a selectable seat:", {
-        type: shape.type,
-        seatStatus: shape.seatStatus,
-      });
+      // Actualizar el estado de selección
+      setSelected(currentSelected);
     }
   };
 
@@ -157,11 +115,6 @@ export default function SeatMap({ onBackToHome }: SeatMapProps) {
           }, 100);
 
           // Log para debug
-          console.log("Loaded plan shapes:", selectedPlan.shapes);
-          console.log(
-            "Seat shapes:",
-            selectedPlan.shapes.filter((s: PlanShape) => s.type === "seat")
-          );
         }
       } catch (error) {
         console.error("Error loading plan:", error);

@@ -13,7 +13,8 @@ export type ShapeType =
   | "polygon"
   | "regular-polygon"
   | "seat"
-  | "selection";
+  | "selection"
+  | "group"; // Nuevo tipo para grupos
 
 export type PlanShape = {
   id: string;
@@ -43,6 +44,9 @@ export type PlanShape = {
   seatSection?: string;
   seatPrice?: number;
   seatIndex?: number; // Índice de posición del asiento
+  // Para grupos
+  groupId?: string; // ID del grupo al que pertenece
+  childShapes?: string[]; // IDs de las formas hijas (solo para grupos)
 };
 
 export type GridConfig = {
@@ -54,6 +58,37 @@ export type GridConfig = {
   seatSize: number; // Nuevo: tamaño del asiento en cuadrados (ej: 2 = 2² = 4 cuadrados)
 };
 
+// Tipos para el sistema de historial
+export type HistoryAction =
+  | "add_shape"
+  | "remove_shape"
+  | "remove_multiple_shapes"
+  | "update_shape"
+  | "update_grid_config"
+  | "clear_all"
+  | "group_shapes"
+  | "ungroup_shapes";
+
+export type HistoryEntry = {
+  id: string;
+  action: HistoryAction;
+  timestamp: number;
+  previousState: {
+    shapes: PlanShape[];
+    gridConfig: GridConfig;
+  };
+  currentState: {
+    shapes: PlanShape[];
+    gridConfig: GridConfig;
+  };
+  metadata?: {
+    shapeId?: string;
+    shapeIds?: string[];
+    shapeType?: string;
+    groupId?: string;
+  };
+};
+
 interface PlanStore {
   shapes: PlanShape[];
   selectedShapeId: string | null;
@@ -61,6 +96,10 @@ interface PlanStore {
   isDrawing: boolean;
   currentTool: ShapeType | null;
   gridConfig: GridConfig;
+  // Sistema de historial para Undo/Redo
+  history: HistoryEntry[];
+  historyIndex: number;
+  maxHistorySize: number;
   // Para dibujo libre
   currentPath: number[];
   isDrawingFreehand: boolean;
@@ -78,6 +117,7 @@ interface PlanStore {
   // Acciones básicas
   addShape: (shape: Omit<PlanShape, "id">) => void;
   removeShape: (id: string) => void;
+  removeMultipleShapes: (ids: string[]) => void;
   updateShape: (id: string, updates: Partial<PlanShape>) => void;
   selectShape: (id: string | null) => void;
 
@@ -124,6 +164,22 @@ interface PlanStore {
   clearSelection: () => void;
   selectMultiple: (ids: string[]) => void;
 
+  // Sistema de historial
+  addToHistory: (
+    action: HistoryAction,
+    metadata?: {
+      shapeId?: string;
+      shapeIds?: string[];
+      shapeType?: string;
+      groupId?: string;
+    }
+  ) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  clearHistory: () => void;
+
   // Exportar/Importar
   exportToJSON: () => string;
   importFromJSON: (json: string) => void;
@@ -167,6 +223,8 @@ interface PlanStore {
 
   // Funciones para movimiento grupal de asientos
   moveSelectedSeats: (deltaX: number, deltaY: number) => void;
+  // Funciones para movimiento grupal de cualquier forma
+  moveSelectedShapes: (deltaX: number, deltaY: number) => void;
   isSeatGroupMoveValid: (
     seatIds: string[],
     deltaX: number,
@@ -174,7 +232,13 @@ interface PlanStore {
   ) => boolean;
 
   // Funciones para selección por área
-  selectSeatsInArea: (x1: number, y1: number, x2: number, y2: number) => void;
+
+  selectShapesInArea: (x1: number, y1: number, x2: number, y2: number) => void;
+
+  // Funciones para agrupación
+  groupShapes: (shapeIds: string[]) => void;
+  ungroupShapes: (groupId: string) => void;
+  isGroupable: (shapeIds: string[]) => boolean;
 }
 
 export const usePlanStore = create<PlanStore>()(
@@ -193,6 +257,10 @@ export const usePlanStore = create<PlanStore>()(
         snapToGrid: false,
         seatSize: 1, // Valor por defecto para el tamaño del asiento
       },
+      // Sistema de historial
+      history: [],
+      historyIndex: -1,
+      maxHistorySize: 50,
       currentPath: [],
       isDrawingFreehand: false,
       isDrawingPolygon: false,
@@ -203,6 +271,9 @@ export const usePlanStore = create<PlanStore>()(
       regularPolygonSides: 5,
 
       addShape: (shapeData) => {
+        // Agregar al historial antes de la acción
+        get().addToHistory("add_shape", { shapeType: shapeData.type });
+
         // Si es un asiento, asegurar seatStatus: 'available' por defecto
         const isSeat = shapeData.type === "seat";
         const newShape: PlanShape = {
@@ -217,6 +288,13 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       removeShape: (id) => {
+        // Agregar al historial antes de la acción
+        const shape = get().shapes.find((s) => s.id === id);
+        get().addToHistory("remove_shape", {
+          shapeId: id,
+          shapeType: shape?.type,
+        });
+
         set((state) => ({
           shapes: state.shapes.filter((shape) => shape.id !== id),
           selectedShapeId:
@@ -224,7 +302,26 @@ export const usePlanStore = create<PlanStore>()(
         }));
       },
 
+      // Función para eliminar múltiples elementos de una vez
+      removeMultipleShapes: (ids: string[]) => {
+        // Agregar al historial antes de la acción
+        get().addToHistory("remove_multiple_shapes", { shapeIds: ids });
+
+        set((state) => ({
+          shapes: state.shapes.filter((shape) => !ids.includes(shape.id)),
+          selectedShapeId: null,
+          selectedShapeIds: [],
+        }));
+      },
+
       updateShape: (id, updates) => {
+        // Agregar al historial antes de la acción
+        const shape = get().shapes.find((s) => s.id === id);
+        get().addToHistory("update_shape", {
+          shapeId: id,
+          shapeType: shape?.type,
+        });
+
         set((state) => ({
           shapes: state.shapes.map((shape) =>
             shape.id === id ? { ...shape, ...updates } : shape
@@ -238,7 +335,6 @@ export const usePlanStore = create<PlanStore>()(
 
       // Selección múltiple
       selectMultiple: (ids) => {
-        console.log("selectMultiple llamado:", { ids });
         set({
           selectedShapeIds: ids,
           selectedShapeId: ids.length > 0 ? ids[0] : null,
@@ -414,6 +510,9 @@ export const usePlanStore = create<PlanStore>()(
       },
 
       updateGridConfig: (config) => {
+        // Agregar al historial antes de la acción
+        get().addToHistory("update_grid_config");
+
         set((state) => {
           const newGridConfig = { ...state.gridConfig, ...config };
 
@@ -938,13 +1037,6 @@ export const usePlanStore = create<PlanStore>()(
       moveSelectedSeats: (deltaX, deltaY) => {
         const { selectedShapeIds, gridConfig, shapes } = get();
 
-        console.log("moveSelectedSeats llamado:", {
-          selectedShapeIds,
-          selectedShapeIdsLength: selectedShapeIds.length,
-          deltaX,
-          deltaY,
-        });
-
         if (selectedShapeIds.length === 0) return;
 
         // Filtrar solo asientos seleccionados
@@ -954,7 +1046,6 @@ export const usePlanStore = create<PlanStore>()(
         );
 
         if (selectedSeats.length === 0) {
-          console.log("No hay asientos seleccionados para mover");
           return;
         }
 
@@ -964,10 +1055,8 @@ export const usePlanStore = create<PlanStore>()(
           deltaX,
           deltaY
         );
-        console.log("Validación de movimiento grupal:", { isValidMove });
 
         if (isValidMove) {
-          console.log("Movimiento válido, actualizando posiciones...");
           set((state) => ({
             shapes: state.shapes.map((shape) => {
               if (
@@ -980,12 +1069,6 @@ export const usePlanStore = create<PlanStore>()(
                   Math.round((shape.x + deltaX) / gridSize) * gridSize;
                 const newY =
                   Math.round((shape.y + deltaY) / gridSize) * gridSize;
-
-                console.log("Actualizando asiento:", {
-                  id: shape.id,
-                  oldPos: { x: shape.x, y: shape.y },
-                  newPos: { x: newX, y: newY },
-                });
 
                 return {
                   ...shape,
@@ -1002,7 +1085,74 @@ export const usePlanStore = create<PlanStore>()(
             setTimeout(() => get().updateSeatIndex(seatId), 100);
           });
         } else {
-          console.log("Movimiento no válido, no se actualiza");
+        }
+      },
+
+      // Función para mover múltiples formas seleccionadas de cualquier tipo
+      moveSelectedShapes: (deltaX, deltaY) => {
+        const { selectedShapeIds, shapes, gridConfig } = get();
+
+        if (selectedShapeIds.length === 0) return;
+
+        // Obtener todas las formas seleccionadas
+        const selectedShapes = shapes.filter((shape) =>
+          selectedShapeIds.includes(shape.id)
+        );
+
+        if (selectedShapes.length === 0) return;
+
+        // Verificar si solo hay asientos seleccionados
+        const selectedSeats = selectedShapes.filter(
+          (shape) => shape.type === "seat"
+        );
+        const hasOnlySeats =
+          selectedSeats.length > 0 &&
+          selectedSeats.length === selectedShapes.length;
+
+        if (hasOnlySeats) {
+          // Si solo hay asientos, usar validación de grupo para moverlos juntos
+          const seatIds = selectedSeats.map((seat) => seat.id);
+
+          // Verificar si todo el grupo puede moverse
+          if (get().isSeatGroupMoveValid(seatIds, deltaX, deltaY)) {
+            // Mover todos los asientos juntos
+            selectedSeats.forEach((seat) => {
+              const newX = seat.x + deltaX;
+              const newY = seat.y + deltaY;
+              const gridSize = gridConfig.size;
+              const snappedX = Math.round(newX / gridSize) * gridSize;
+              const snappedY = Math.round(newY / gridSize) * gridSize;
+
+              get().updateShape(seat.id, { x: snappedX, y: snappedY });
+              setTimeout(() => get().updateSeatIndex(seat.id), 100);
+            });
+          }
+        } else {
+          // Para formas mixtas o solo otras formas, comportamiento normal
+          selectedShapes.forEach((shape) => {
+            const newX = shape.x + deltaX;
+            const newY = shape.y + deltaY;
+
+            if (shape.type === "seat") {
+              // Para asientos individuales, usar validación normal
+              if (get().isSeatMoveValid(shape.id, newX, newY)) {
+                const gridSize = gridConfig.size;
+                const snappedX = Math.round(newX / gridSize) * gridSize;
+                const snappedY = Math.round(newY / gridSize) * gridSize;
+                get().updateShape(shape.id, { x: snappedX, y: snappedY });
+                setTimeout(() => get().updateSeatIndex(shape.id), 100);
+              }
+            } else {
+              // Para otras formas, comportamiento normal
+              if (gridConfig.snapToGrid && gridConfig.enabled) {
+                const snappedX = get().snapToGrid(newX);
+                const snappedY = get().snapToGrid(newY);
+                get().updateShape(shape.id, { x: snappedX, y: snappedY });
+              } else {
+                get().updateShape(shape.id, { x: newX, y: newY });
+              }
+            }
+          });
         }
       },
 
@@ -1019,8 +1169,8 @@ export const usePlanStore = create<PlanStore>()(
           const newY = Math.round((seat.y + deltaY) / gridSize) * gridSize;
 
           // Verificar límites del canvas
-          if (newX < 0 || newX + seat.width > 1200) return false;
-          if (newY < 0 || newY + seat.height > 800) return false;
+          if (newX < 0 || newX + seat.width > 3600) return false;
+          if (newY < 0 || newY + seat.height > 2400) return false;
 
           // Verificar conflictos con otros asientos (excluyendo los del grupo)
           const occupiedPositions = get().getOccupiedGridPositions();
@@ -1063,8 +1213,8 @@ export const usePlanStore = create<PlanStore>()(
         return true;
       },
 
-      // Selección por área
-      selectSeatsInArea: (x1, y1, x2, y2) => {
+      // Funciones para selección por área
+      selectShapesInArea: (x1, y1, x2, y2) => {
         const { shapes } = get();
 
         // Calcular el área de selección
@@ -1073,52 +1223,240 @@ export const usePlanStore = create<PlanStore>()(
         const minY = Math.min(y1, y2);
         const maxY = Math.max(y1, y2);
 
-        // Encontrar todos los asientos dentro del área
-        const seatsInArea = shapes
-          .filter((shape) => shape.type === "seat")
-          .filter((seat) => {
-            // Verificar si el asiento intersecta con el área de selección
-            const seatRight = seat.x + seat.width;
-            const seatBottom = seat.y + seat.height;
+        // Encontrar todas las formas dentro del área
+        const shapesInArea = shapes
+          .filter((shape) => {
+            // Verificar si la forma intersecta con el área de selección
+            const shapeRight = shape.x + shape.width;
+            const shapeBottom = shape.y + shape.height;
 
             const isInArea =
-              seat.x < maxX &&
-              seatRight > minX &&
-              seat.y < maxY &&
-              seatBottom > minY;
-
-            console.log("Verificando asiento:", {
-              id: seat.id,
-              seatPos: {
-                x: seat.x,
-                y: seat.y,
-                right: seatRight,
-                bottom: seatBottom,
-              },
-              area: { minX, maxX, minY, maxY },
-              isInArea,
-            });
+              shape.x < maxX &&
+              shapeRight > minX &&
+              shape.y < maxY &&
+              shapeBottom > minY;
 
             return isInArea;
           })
-          .map((seat) => seat.id);
+          .map((shape) => shape.id);
 
-        console.log("Asientos encontrados en área:", seatsInArea);
-
-        // Seleccionar los asientos encontrados
-        if (seatsInArea.length > 0) {
-          console.log("Estableciendo selección múltiple:", seatsInArea);
+        // Seleccionar las formas encontradas
+        if (shapesInArea.length > 0) {
           set({
-            selectedShapeIds: seatsInArea,
-            selectedShapeId: seatsInArea[0],
+            selectedShapeIds: shapesInArea,
+            selectedShapeId: shapesInArea[0],
           });
         } else {
-          console.log("No se encontraron asientos, limpiando selección");
           set({
             selectedShapeId: null,
             selectedShapeIds: [],
           });
         }
+      },
+
+      // Funciones para agrupación
+      groupShapes: (shapeIds) => {
+        const { shapes } = get();
+        const shapesToGroup = shapes.filter((shape) =>
+          shapeIds.includes(shape.id)
+        );
+
+        if (shapesToGroup.length < 2) {
+          alert("Debe seleccionar al menos dos formas para agruparlas.");
+          return;
+        }
+
+        // Verificar si todas las formas seleccionadas son del mismo tipo
+        const firstShapeType = shapesToGroup[0].type;
+        if (!shapesToGroup.every((shape) => shape.type === firstShapeType)) {
+          alert(
+            "Las formas seleccionadas deben ser del mismo tipo para agruparlas."
+          );
+          return;
+        }
+
+        // Verificar que ninguna forma ya esté en un grupo
+        if (shapesToGroup.some((shape) => shape.groupId)) {
+          alert("Una o más formas ya están agrupadas. Desagrupe primero.");
+          return;
+        }
+
+        // Crear un nuevo ID de grupo único
+        const newGroupId = `group_${Date.now()}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`;
+
+        // Actualizar las formas seleccionadas para que pertenezcan al nuevo grupo
+        set((state) => ({
+          shapes: state.shapes.map((shape) => {
+            if (shapeIds.includes(shape.id)) {
+              return {
+                ...shape,
+                groupId: newGroupId,
+              };
+            }
+            return shape;
+          }),
+        }));
+
+        // Agregar al historial
+        get().addToHistory("group_shapes", { shapeIds: shapeIds });
+      },
+
+      ungroupShapes: (groupId) => {
+        const { shapes } = get();
+        const shapesToUngroup = shapes.filter(
+          (shape) => shape.groupId === groupId
+        );
+
+        if (shapesToUngroup.length === 0) {
+          alert("No hay formas en este grupo para desagrupar.");
+          return;
+        }
+
+        // Verificar si todas las formas del grupo son del mismo tipo
+        const firstShapeType = shapesToUngroup[0].type;
+        if (!shapesToUngroup.every((shape) => shape.type === firstShapeType)) {
+          alert(
+            "Las formas del grupo deben ser del mismo tipo para desagruparlas."
+          );
+          return;
+        }
+
+        // Eliminar el ID de grupo de las formas seleccionadas
+        set((state) => ({
+          shapes: state.shapes.map((shape) => {
+            if (shapesToUngroup.includes(shape)) {
+              return {
+                ...shape,
+                groupId: undefined,
+              };
+            }
+            return shape;
+          }),
+        }));
+
+        // Agregar al historial
+        get().addToHistory("ungroup_shapes", { groupId: groupId });
+      },
+
+      isGroupable: (shapeIds) => {
+        const { shapes } = get();
+        const shapesToGroup = shapes.filter((shape) =>
+          shapeIds.includes(shape.id)
+        );
+
+        if (shapesToGroup.length < 2) {
+          return false;
+        }
+
+        // Verificar si todas las formas seleccionadas son del mismo tipo
+        const firstShapeType = shapesToGroup[0].type;
+        if (!shapesToGroup.every((shape) => shape.type === firstShapeType)) {
+          return false;
+        }
+
+        // Verificar que ninguna forma ya esté en un grupo
+        if (shapesToGroup.some((shape) => shape.groupId)) {
+          return false;
+        }
+
+        return true;
+      },
+
+      // Sistema de historial
+      addToHistory: (
+        action: HistoryAction,
+        metadata?: {
+          shapeId?: string;
+          shapeIds?: string[];
+          shapeType?: string;
+          groupId?: string;
+        }
+      ) => {
+        const { shapes, gridConfig, history, historyIndex, maxHistorySize } =
+          get();
+
+        // Crear entrada del historial
+        const historyEntry: HistoryEntry = {
+          id: `history_${Date.now()}_${Math.random()
+            .toString(36)
+            .substr(2, 9)}`,
+          action,
+          timestamp: Date.now(),
+          previousState: {
+            shapes: [...shapes],
+            gridConfig: { ...gridConfig },
+          },
+          currentState: {
+            shapes: [...shapes],
+            gridConfig: { ...gridConfig },
+          },
+          metadata,
+        };
+
+        // Eliminar entradas futuras si estamos en medio del historial
+        const newHistory = history.slice(0, historyIndex + 1);
+
+        // Agregar nueva entrada
+        newHistory.push(historyEntry);
+
+        // Limitar el tamaño del historial
+        if (newHistory.length > maxHistorySize) {
+          newHistory.shift();
+        }
+
+        set({
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+        });
+      },
+
+      undo: () => {
+        const { history, historyIndex } = get();
+
+        if (historyIndex > 0) {
+          const previousEntry = history[historyIndex - 1];
+          set({
+            shapes: [...previousEntry.previousState.shapes],
+            gridConfig: { ...previousEntry.previousState.gridConfig },
+            historyIndex: historyIndex - 1,
+            selectedShapeId: null,
+            selectedShapeIds: [],
+          });
+        }
+      },
+
+      redo: () => {
+        const { history, historyIndex } = get();
+
+        if (historyIndex < history.length - 1) {
+          const nextEntry = history[historyIndex + 1];
+          set({
+            shapes: [...nextEntry.currentState.shapes],
+            gridConfig: { ...nextEntry.currentState.gridConfig },
+            historyIndex: historyIndex + 1,
+            selectedShapeId: null,
+            selectedShapeIds: [],
+          });
+        }
+      },
+
+      canUndo: () => {
+        const { historyIndex } = get();
+        return historyIndex > 0;
+      },
+
+      canRedo: () => {
+        const { history, historyIndex } = get();
+        return historyIndex < history.length - 1;
+      },
+
+      clearHistory: () => {
+        set({
+          history: [],
+          historyIndex: -1,
+        });
       },
     }),
     {

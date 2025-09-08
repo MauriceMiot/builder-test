@@ -94,8 +94,7 @@ export default function SavePlanModal({
       setTitle("");
       onClose();
     } catch (error) {
-      console.error("Error al guardar el plano:", error);
-      alert("Error al guardar el plano");
+      console.log("Error al guardar el plano:", error);
     } finally {
       setIsLoading(false);
     }

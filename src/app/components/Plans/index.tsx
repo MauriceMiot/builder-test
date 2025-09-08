@@ -8,18 +8,21 @@ import PropertiesPanel from "./PropertiesPanel";
 import GridSettings from "./GridSettings";
 import SavePlanModal from "./SavePlanModal";
 import LoadPlanModal from "./LoadPlanModal";
+import ExcelConverterModal from "./ExcelConverterModal";
 
 interface PlansProps {
   onBackToHome?: () => void;
 }
 
 export default function Plans({ onBackToHome }: PlansProps) {
-  const { exportToJSON, importFromJSON } = usePlanStore();
+  const { exportToJSON, importFromJSON, undo, redo, canUndo, canRedo } =
+    usePlanStore();
   const [activePanel, setActivePanel] = useState<"properties" | "grid">(
     "properties"
   );
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showExcelConverter, setShowExcelConverter] = useState(false);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
 
   const handleExport = () => {
@@ -52,7 +55,7 @@ export default function Plans({ onBackToHome }: PlansProps) {
         shapes: [],
         gridConfig: {
           enabled: true,
-          size: 40,
+          size: 20,
           color: "#E5E7EB",
           opacity: 0.5,
           snapToGrid: false,
@@ -111,6 +114,34 @@ export default function Plans({ onBackToHome }: PlansProps) {
               </button>
             </div>
             <div className="flex items-center gap-4">
+              {/* Botones Undo/Redo */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={undo}
+                  disabled={!canUndo()}
+                  className={`px-3 py-2 rounded-md transition-colors text-sm font-medium ${
+                    canUndo()
+                      ? "bg-gray-600 text-white hover:bg-gray-700"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                  title="Deshacer (Ctrl+Z)"
+                >
+                  ↩️ Undo
+                </button>
+                <button
+                  onClick={redo}
+                  disabled={!canRedo()}
+                  className={`px-3 py-2 rounded-md transition-colors text-sm font-medium ${
+                    canRedo()
+                      ? "bg-gray-600 text-white hover:bg-gray-700"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                  title="Rehacer (Ctrl+Y)"
+                >
+                  ↪️ Redo
+                </button>
+              </div>
+
               <button
                 onClick={handleNewPlan}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium"
@@ -122,6 +153,12 @@ export default function Plans({ onBackToHome }: PlansProps) {
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
               >
                 📁 Cargar Plano
+              </button>
+              <button
+                onClick={() => setShowExcelConverter(true)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm font-medium"
+              >
+                📊 Excel a JSON
               </button>
               <button
                 onClick={() => setShowSaveModal(true)}
@@ -214,6 +251,14 @@ export default function Plans({ onBackToHome }: PlansProps) {
             setCurrentPlanId(planId);
             setShowSaveModal(false);
           }}
+        />
+      )}
+
+      {/* Modal para convertir Excel */}
+      {showExcelConverter && (
+        <ExcelConverterModal
+          isOpen={showExcelConverter}
+          onClose={() => setShowExcelConverter(false)}
         />
       )}
     </div>

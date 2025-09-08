@@ -60,6 +60,7 @@ export default function Canvas() {
     selectMultiple,
     updateShape,
     removeShape,
+    removeMultipleShapes,
     clearSelection,
     bringToFront,
     sendToBack,
@@ -82,8 +83,12 @@ export default function Canvas() {
     isSeatMoveValid,
     getSeatPositions,
     updateSeatIndex,
-    moveSelectedSeats,
-    selectSeatsInArea,
+    moveSelectedShapes,
+    selectShapesInArea,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = usePlanStore();
 
   // Funciones de zoom
@@ -97,6 +102,14 @@ export default function Canvas() {
 
   const handleResetZoom = () => {
     setZoom(1);
+  };
+
+  // Funciones helper para manejar coordenadas con zoom
+  const getCanvasPosition = (mousePos: { x: number; y: number }) => {
+    return {
+      x: mousePos.x / zoom,
+      y: mousePos.y / zoom,
+    };
   };
 
   useEffect(() => {
@@ -134,14 +147,17 @@ export default function Canvas() {
           activeElement.tagName === "TEXTAREA" ||
           (activeElement as HTMLElement).contentEditable === "true");
 
-      // Solo borrar la figura si no estamos en un input y hay una figura seleccionada
-      if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        selectedShapeId &&
-        !isInputElement
-      ) {
-        removeShape(selectedShapeId);
-        clearSelection();
+      // Eliminar elementos seleccionados con Delete o Backspace
+      if ((e.key === "Delete" || e.key === "Backspace") && !isInputElement) {
+        // Si hay selección múltiple, eliminar todos los elementos seleccionados
+        if (selectedShapeIds.length > 1) {
+          removeMultipleShapes(selectedShapeIds);
+        }
+        // Si hay solo un elemento seleccionado, eliminarlo
+        else if (selectedShapeId) {
+          removeShape(selectedShapeId);
+          clearSelection();
+        }
       }
       // Finalizar polígono con Enter
       if (e.key === "Enter" && isDrawingPolygon) {
@@ -158,6 +174,29 @@ export default function Canvas() {
       // Cancelar modo de pegado con Escape
       if (e.key === "Escape" && isPasteMode) {
         setIsPasteMode(false);
+      }
+
+      // Undo con Ctrl+Z
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "z" &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+        if (canUndo()) {
+          undo();
+        }
+      }
+
+      // Redo con Ctrl+Y o Ctrl+Shift+Z
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z")
+      ) {
+        e.preventDefault();
+        if (canRedo()) {
+          redo();
+        }
       }
       // Traer al frente con Ctrl+Shift+Up
       if (
@@ -180,15 +219,8 @@ export default function Canvas() {
         sendToBack(selectedShapeId);
       }
 
-      // Movimiento grupal de asientos con flechas
+      // Movimiento grupal de formas seleccionadas con flechas
       if (selectedShapeIds.length > 0) {
-        console.log(
-          "Tecla presionada:",
-          e.key,
-          "selectedShapeIds:",
-          selectedShapeIds
-        );
-
         const gridSize = gridConfig.size;
         let deltaX = 0;
         let deltaY = 0;
@@ -210,11 +242,10 @@ export default function Canvas() {
 
         if (deltaX !== 0 || deltaY !== 0) {
           e.preventDefault();
-          console.log("Intentando mover asientos:", { deltaX, deltaY });
-          moveSelectedSeats(deltaX, deltaY);
+
+          // Usar moveSelectedShapes para mover cualquier tipo de forma
+          moveSelectedShapes(deltaX, deltaY);
         }
-      } else {
-        console.log("No hay asientos seleccionados para movimiento grupal");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -224,6 +255,7 @@ export default function Canvas() {
     selectedShapeIds,
     gridConfig.size,
     removeShape,
+    removeMultipleShapes,
     clearSelection,
     bringToFront,
     sendToBack,
@@ -232,7 +264,12 @@ export default function Canvas() {
     isEditingPolygon,
     stopPolygonEditing,
     isPasteMode,
-    moveSelectedSeats,
+    moveSelectedShapes,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    zoom,
   ]);
 
   useEffect(() => {
@@ -245,13 +282,11 @@ export default function Canvas() {
             selectedShapeIds.includes(s.id)
           );
           copiedShapes = selectedShapes.map((shape) => ({ ...shape }));
-          console.log("Copiadas", copiedShapes.length, "formas");
         } else if (selectedShapeId) {
           // Copiar selección individual
           const shape = shapes.find((s) => s.id === selectedShapeId);
           if (shape) {
             copiedShapes = [{ ...shape }];
-            console.log("Copiada 1 forma");
           }
         }
       }
@@ -260,17 +295,12 @@ export default function Canvas() {
         if (copiedShapes.length > 0) {
           // Activar modo de pegado
           setIsPasteMode(true);
-          console.log(
-            "Modo de pegado activado. Haz clic donde quieres pegar las",
-            copiedShapes.length,
-            "formas"
-          );
         }
       }
     };
     window.addEventListener("keydown", handleCopyPaste);
     return () => window.removeEventListener("keydown", handleCopyPaste);
-  }, [selectedShapeId, selectedShapeIds, shapes, addShape]);
+  }, [selectedShapeId, selectedShapeIds, shapes, addShape, zoom]);
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
@@ -285,12 +315,15 @@ export default function Canvas() {
 
     // Manejar modo de pegado
     if (isPasteMode && clickedOnEmpty) {
-      const pos = stage?.getPointerPosition();
-      if (pos && copiedShapes.length > 0) {
+      const mousePos = stage?.getPointerPosition();
+      if (mousePos && copiedShapes.length > 0) {
+        // Convertir posición del mouse a coordenadas del canvas
+        const canvasPos = getCanvasPosition(mousePos);
+
         // Calcular el offset basado en la posición del clic
         const firstShape = copiedShapes[0];
-        const offsetX = pos.x - firstShape.x;
-        const offsetY = pos.y - firstShape.y;
+        const offsetX = canvasPos.x - firstShape.x;
+        const offsetY = canvasPos.y - firstShape.y;
 
         // Crear copias de todas las formas en la nueva posición
         copiedShapes.forEach((originalShape) => {
@@ -305,7 +338,6 @@ export default function Canvas() {
           addShape(newShape);
         });
 
-        console.log("Pegadas", copiedShapes.length, "formas en posición", pos);
         setIsPasteMode(false);
         return;
       }
@@ -329,13 +361,15 @@ export default function Canvas() {
 
     if (currentTool === "freehand") {
       // Iniciar dibujo libre
-      startFreehandDrawing(pos.x, pos.y);
+      const canvasPos = getCanvasPosition(pos);
+      startFreehandDrawing(canvasPos.x, canvasPos.y);
     } else if (currentTool === "polygon") {
       // Iniciar o agregar punto al polígono irregular
+      const canvasPos = getCanvasPosition(pos);
       if (!isDrawingPolygon) {
-        startPolygonDrawing(pos.x, pos.y);
+        startPolygonDrawing(canvasPos.x, canvasPos.y);
       } else {
-        addPolygonPoint(pos.x, pos.y);
+        addPolygonPoint(canvasPos.x, canvasPos.y);
       }
     } else if (currentTool === "seat") {
       // Crear asiento directamente en la posición del highlight (que ya está ajustada a la cuadrícula)
@@ -383,12 +417,14 @@ export default function Canvas() {
       }
     } else if (currentTool === "selection") {
       // Iniciar selección por área
-      setStartPos(pos);
+      const canvasPos = getCanvasPosition(pos);
+      setStartPos(canvasPos);
       setIsDrawing(true);
-      setSelectionArea({ x: pos.x, y: pos.y, width: 0, height: 0 });
+      setSelectionArea({ x: canvasPos.x, y: canvasPos.y, width: 0, height: 0 });
     } else {
       // Modo dibujo de figuras (para otras formas)
-      setStartPos(pos);
+      const canvasPos = getCanvasPosition(pos);
+      setStartPos(canvasPos);
       setIsDrawing(true);
       updatePreviewShape(null);
     }
@@ -401,22 +437,29 @@ export default function Canvas() {
 
     if (currentTool === "freehand" && isDrawingFreehand) {
       // Agregar punto al dibujo libre
-      addPointToFreehand(pos.x, pos.y);
+      const canvasPos = getCanvasPosition(pos);
+      addPointToFreehand(canvasPos.x, canvasPos.y);
     } else if (currentTool === "seat") {
       // Resaltar el área que ocuparía el asiento
+      const canvasPos = getCanvasPosition(pos);
       const seatSizeInSquares = gridConfig.seatSize;
-      const positions = getSeatPositions(pos.x, pos.y, seatSizeInSquares);
+      const positions = getSeatPositions(
+        canvasPos.x,
+        canvasPos.y,
+        seatSizeInSquares
+      );
       setSeatHighlightPositions(positions);
 
       // Almacenar la posición ajustada a la cuadrícula para crear el asiento
-      const snappedPos = snapPositionToGrid(pos.x, pos.y);
+      const snappedPos = snapPositionToGrid(canvasPos.x, canvasPos.y);
       setSeatHighlightPosition(snappedPos);
     } else if (currentTool === "selection" && isDrawing) {
       // Actualizar área de selección
-      const width = Math.abs(pos.x - startPos.x);
-      const height = Math.abs(pos.y - startPos.y);
-      const x = Math.min(startPos.x, pos.x);
-      const y = Math.min(startPos.y, pos.y);
+      const canvasPos = getCanvasPosition(pos);
+      const width = Math.abs(canvasPos.x - startPos.x);
+      const height = Math.abs(canvasPos.y - startPos.y);
+      const x = Math.min(startPos.x, canvasPos.x);
+      const y = Math.min(startPos.y, canvasPos.y);
 
       setSelectionArea({ x, y, width, height });
     } else if (
@@ -427,14 +470,15 @@ export default function Canvas() {
       !["seat"].includes(currentTool)
     ) {
       // Preview de figuras normales en tiempo real
-      const width = Math.abs(pos.x - startPos.x);
-      const height = Math.abs(pos.y - startPos.y);
+      const canvasPos = getCanvasPosition(pos);
+      const width = Math.abs(canvasPos.x - startPos.x);
+      const height = Math.abs(canvasPos.y - startPos.y);
 
       if (width > 5 && height > 5) {
         let previewData: Omit<PlanShape, "id"> = {
           type: currentTool,
-          x: Math.min(startPos.x, pos.x),
-          y: Math.min(startPos.y, pos.y),
+          x: Math.min(startPos.x, canvasPos.x),
+          y: Math.min(startPos.y, canvasPos.y),
           width,
           height,
           fill: "#3B82F6",
@@ -487,8 +531,7 @@ export default function Canvas() {
     } else if (currentTool === "selection" && isDrawing) {
       // Finalizar selección por área
       if (selectionArea) {
-        console.log("Área de selección:", selectionArea);
-        selectSeatsInArea(
+        selectShapesInArea(
           selectionArea.x,
           selectionArea.y,
           selectionArea.x + selectionArea.width,
@@ -503,17 +546,18 @@ export default function Canvas() {
       !["freehand", "polygon", "seat", "selection"].includes(currentTool) // Excluir asientos y selección
     ) {
       const stage = e.target.getStage();
-      const pos = stage?.getPointerPosition();
-      if (pos) {
-        const width = Math.abs(pos.x - startPos.x);
-        const height = Math.abs(pos.y - startPos.y);
+      const mousePos = stage?.getPointerPosition();
+      if (mousePos) {
+        const canvasPos = getCanvasPosition(mousePos);
+        const width = Math.abs(canvasPos.x - startPos.x);
+        const height = Math.abs(canvasPos.y - startPos.y);
 
         // Solo crear figura si tiene un tamaño mínimo
         if (width > 5 && height > 5) {
           let newShape: Omit<PlanShape, "id"> = {
             type: currentTool,
-            x: Math.min(startPos.x, pos.x),
-            y: Math.min(startPos.y, pos.y),
+            x: Math.min(startPos.x, canvasPos.x),
+            y: Math.min(startPos.y, canvasPos.y),
             width,
             height,
             fill: "#3B82F6",
@@ -602,29 +646,39 @@ export default function Canvas() {
 
   const handleShapeDragEnd = (shapeId: string, x: number, y: number) => {
     const shape = shapes.find((s) => s.id === shapeId);
+    if (!shape) return;
 
-    // Validación especial para asientos
-    if (shape?.type === "seat") {
-      if (isSeatMoveValid(shapeId, x, y)) {
-        // Siempre ajustar a la cuadrícula para asientos, independientemente de la configuración
-        const gridSize = gridConfig.size;
-        const snappedX = Math.round(x / gridSize) * gridSize;
-        const snappedY = Math.round(y / gridSize) * gridSize;
-        updateShape(shapeId, { x: snappedX, y: snappedY });
-        // Actualizar el índice después de mover el asiento
-        setTimeout(() => updateSeatIndex(shapeId), 100);
-      } else {
-        // Si la posición no es válida, revertir a la posición original
-        updateShape(shapeId, { x: shape.x, y: shape.y });
-      }
+    // Verificar si hay múltiples formas seleccionadas y el arrastrado está entre ellas
+    const isMultipleSelection =
+      selectedShapeIds.length > 1 && selectedShapeIds.includes(shapeId);
+
+    if (isMultipleSelection) {
+      // Calcular el delta del movimiento basado en la forma arrastrada
+      const deltaX = x - shape.x;
+      const deltaY = y - shape.y;
+
+      // Usar moveSelectedShapes para mover todas las formas seleccionadas
+      moveSelectedShapes(deltaX, deltaY);
     } else {
-      // Para otras formas, comportamiento normal
-      if (gridConfig.snapToGrid && gridConfig.enabled) {
-        const snappedX = snapToGrid(x);
-        const snappedY = snapToGrid(y);
-        updateShape(shapeId, { x: snappedX, y: snappedY });
+      // Comportamiento original para una sola forma
+      if (shape.type === "seat") {
+        if (isSeatMoveValid(shapeId, x, y)) {
+          const gridSize = gridConfig.size;
+          const snappedX = Math.round(x / gridSize) * gridSize;
+          const snappedY = Math.round(y / gridSize) * gridSize;
+          updateShape(shapeId, { x: snappedX, y: snappedY });
+          setTimeout(() => updateSeatIndex(shapeId), 100);
+        } else {
+          updateShape(shapeId, { x: shape.x, y: shape.y });
+        }
       } else {
-        updateShape(shapeId, { x, y });
+        if (gridConfig.snapToGrid && gridConfig.enabled) {
+          const snappedX = snapToGrid(x);
+          const snappedY = snapToGrid(y);
+          updateShape(shapeId, { x: snappedX, y: snappedY });
+        } else {
+          updateShape(shapeId, { x, y });
+        }
       }
     }
   };
@@ -880,16 +934,6 @@ export default function Canvas() {
           />
         );
       case "seat":
-        const isInMultiSelection = selectedShapeIds.includes(shape.id);
-        console.log("Renderizando asiento:", {
-          id: shape.id,
-          isSelected,
-          isInMultiSelection,
-          selectedShapeIds,
-          strokeColor,
-          strokeWidth,
-        });
-
         return (
           <SeatSVG
             key={shape.id}
@@ -960,8 +1004,8 @@ export default function Canvas() {
     <div className="flex-1 bg-gray-50 p-4">
       <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-black h-full relative">
         <KonvaWrapper
-          width={1200}
-          height={800}
+          width={1200 * 3}
+          height={800 * 3}
           scaleX={zoom}
           scaleY={zoom}
           onMouseDown={handleMouseDown}
@@ -975,28 +1019,34 @@ export default function Canvas() {
             {/* Grid de fondo */}
             {gridConfig.enabled && (
               <>
+                {/* Líneas verticales - cubrir toda el área expandida */}
                 {Array.from(
-                  { length: Math.ceil(1200 / gridConfig.size) },
+                  {
+                    length: Math.ceil((1200 * 3) / gridConfig.size),
+                  },
                   (_, i) => (
                     <Rect
                       key={`grid-v-${i}`}
                       x={i * gridConfig.size}
                       y={0}
                       width={1}
-                      height={800}
+                      height={800 * 3}
                       fill={gridConfig.color}
                       opacity={gridConfig.opacity}
                     />
                   )
                 )}
+                {/* Líneas horizontales - cubrir toda el área expandida */}
                 {Array.from(
-                  { length: Math.ceil(800 / gridConfig.size) },
+                  {
+                    length: Math.ceil((800 * 3) / gridConfig.size),
+                  },
                   (_, i) => (
                     <Rect
                       key={`grid-h-${i}`}
                       x={0}
                       y={i * gridConfig.size}
-                      width={1200}
+                      width={1200 * 3}
                       height={1}
                       fill={gridConfig.color}
                       opacity={gridConfig.opacity}

@@ -1,6 +1,8 @@
 "use client";
 
 import { usePlanStore } from "../../store/plans";
+import { useState } from "react";
+import SeatEnumerationModal from "./SeatEnumerationModal";
 
 const tools: {
   type:
@@ -39,7 +41,22 @@ export default function Toolbar() {
     setCurrentTool,
     regularPolygonSides,
     setRegularPolygonSides,
+    selectedShapeIds,
+    groupShapes,
+    ungroupShapes,
+    isGroupable,
+    shapes,
   } = usePlanStore();
+
+  const [showEnumerationModal, setShowEnumerationModal] = useState(false);
+
+  // Obtener información sobre grupos para los botones
+  const selectedShapes = shapes.filter((shape) =>
+    selectedShapeIds.includes(shape.id)
+  );
+  const canGroup = isGroupable(selectedShapeIds);
+  const canUngroup = selectedShapes.some((shape) => shape.groupId);
+  const groupId = selectedShapes.find((shape) => shape.groupId)?.groupId;
 
   return (
     <div className="flex flex-col items-center space-y-1">
@@ -63,6 +80,58 @@ export default function Toolbar() {
         </button>
       ))}
 
+      {/* Botón de enumeración rápida */}
+      <button
+        onClick={() => setShowEnumerationModal(true)}
+        className="w-12 h-12 rounded-lg border transition-colors flex items-center justify-center relative group bg-orange-500 text-white border-orange-600 hover:bg-orange-600"
+        title="Enumeración Rápida de Asientos"
+      >
+        <div className="text-2xl">🔢</div>
+
+        {/* Tooltip */}
+        <div className="absolute left-full ml-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 pointer-events-none">
+          Enumeración Rápida
+        </div>
+      </button>
+
+      {/* Botón de agrupar */}
+      <button
+        onClick={() => groupShapes(selectedShapeIds)}
+        disabled={!canGroup}
+        className={`w-12 h-12 rounded-lg border transition-colors flex items-center justify-center relative group ${
+          canGroup
+            ? "bg-green-500 text-white border-green-600 hover:bg-green-600"
+            : "bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed"
+        }`}
+        title="Agrupar Formas Seleccionadas"
+      >
+        <div className="text-2xl">🔗</div>
+
+        {/* Tooltip */}
+        <div className="absolute left-full ml-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 pointer-events-none">
+          Agrupar
+        </div>
+      </button>
+
+      {/* Botón de desagrupar */}
+      <button
+        onClick={() => groupId && ungroupShapes(groupId)}
+        disabled={!canUngroup}
+        className={`w-12 h-12 rounded-lg border transition-colors flex items-center justify-center relative group ${
+          canUngroup
+            ? "bg-red-500 text-white border-red-600 hover:bg-red-600"
+            : "bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed"
+        }`}
+        title="Desagrupar Formas Seleccionadas"
+      >
+        <div className="text-2xl">🔓</div>
+
+        {/* Tooltip */}
+        <div className="absolute left-full ml-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50 pointer-events-none">
+          Desagrupar
+        </div>
+      </button>
+
       {/* Configuración adicional para polígonos regulares */}
       {currentTool === "regular-polygon" && (
         <div className="mt-2 p-2 bg-gray-50 rounded-lg border border-black">
@@ -85,6 +154,12 @@ export default function Toolbar() {
           </select>
         </div>
       )}
+
+      {/* Modal de enumeración rápida */}
+      <SeatEnumerationModal
+        isOpen={showEnumerationModal}
+        onClose={() => setShowEnumerationModal(false)}
+      />
     </div>
   );
 }
